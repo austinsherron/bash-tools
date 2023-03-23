@@ -1,0 +1,42 @@
+#!/bin/bash
+
+
+function help() {
+cat << EOF
+This script is a convenience utility for logging into 1password from the CLI
+either as a member of Sigma's 1password org, or my own personal org. This script 
+takes a single argument: a string that any number of starting characters--up 
+to and including the entire string--of the org you want to log into.
+
+Usage: op-login [--help] m*y|s*igmacomputing
+
+Examples:
+
+  op-login m[y]
+  op-login s[igmacomputing]
+EOF
+}
+
+if [[ $# == 0 || $# > 1 || ($# == 1 && $2 ) ]]; then
+    help
+    exit 0
+fi
+
+OP_SIGMA="sigmacomputing"
+OP_AUSTIN="my"
+
+org=""
+given="${1}"
+
+if [[ "${OP_SIGMA}" == ${given}* ]]; then
+    org="${OP_SIGMA}" 
+elif [[ "${OP_AUSTIN}" == ${given}* ]]; then
+    org="${OP_AUSTIN}" 
+else
+    echo "Unrecognized 1password organization=${given}"
+    exit 1
+fi
+
+echo "${org}"
+eval $(op signin ${org})
+

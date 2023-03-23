@@ -1,0 +1,52 @@
+#!/bin/bash
+
+
+set -o errorexit
+set -o nounset
+set -o pipefail
+
+
+function help() {
+    cat << EOF
+This script is a wrapper around rm that protects against unintentional deletion:
+instead fo actully removing the file(s), it/they get(s) moved to the path defined 
+in the SRM_TRASH_CAN env var. 
+
+If the path to "delete" references a link, it will be unlinked instead of deleted.
+
+If neither SRM_TRASH_CAN nor SRM_FORCE are defined, or if SRM_TRASH_CAN isn't 
+defined and SRM_FORCE=true, the script will exit w/ rc=1.
+
+Usage/Examples: rm --help | man rm
+EOF
+}
+
+
+ACTION="mv"
+
+if [[ -z "${SRM_TRASH_CAN}" && "${SRM_FORCE}" ]]; then
+    ACTION="rm"
+elif [[ -z "${SRM_TRASH_CAN}" ]]; then
+    # mkdir -p "${SRM_TRASH_CAN}"
+    # check-rc "Failed to create dir=${SRM_TRASH_CAN}
+
+    echo "The trashcan dir=${SRM_TRASH_CAN} does not exist"
+fi
+
+for arg in "${@}"; do
+    echo "${arg}"
+done
+
+
+function check-rc() {
+    rc=$?
+
+    if [[ ${rc} -eq 0 ]]; then
+        return
+    fi
+
+    err_msg="${1}"
+    echo "${err_msg} (rc=${rc})"
+    exit 1
+}
+
