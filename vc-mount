@@ -1,0 +1,222 @@
+### from starbook
+
+## mounts/veracrypt
+
+VC_MOUNT_POINT="${VOLUME_ROOT}/veracrypt"
+
+alias veracrypt="veracrypt --text"
+
+vc-mount() {
+    veracrypt --mount "${1}" --mount "${2}" --pim "${3}" --keyfiles "" --protect-hidden no --verbose
+}
+
+vc-dismount() {
+    veracrypt --dismount "${1}"
+}
+
+vc-dismount-all() {
+    vc-dismount
+}
+
+## known volumes
+
+vc-mount-vlt() {
+    vc-mount "${MOUNT_POINT}/DukeOfMoles/Encrypted" "${VC_MOUNT_POINT}1/" "0"
+#     vc-mount "${DROPBOX_ROOT}/Storage/DukeOfMoles-Encrypted" "${VC_MOUNT_POINT}1/" "0"
+}
+ 
+vc-dismount-vlt() {
+    vc-dismount "${VC_MOUNT_POINT}1" 
+}
+
+vc-mount-bkup() {
+    vc-mount "${MOUNT_POINT}/VcntOfVoles/Encrypted" "${VC_MOUNT_POINT}2/" "0"
+}
+
+vc-dismount-bkup() {
+    vc-dismount "${VC_MOUNT_POINT}2" 
+}
+
+vc-mount-dp-frz() {
+#     vc-mount "${MOUNT_POINT}/DaneOfDucks/Encrypted" "${VC_MOUNT_POINT}3/" "0"
+    vc-mount "${DROPBOX_ROOT}/Storage/DaneOfDucks-Encrypted" "${VC_MOUNT_POINT}1/" "0"
+}
+
+vc-dismount-dp-frz() {
+    vc-dismount "${VC_MOUNT_POINT}3" 
+}
+
+vc-mount-keys() {
+    vc-mount "${MOUNT_POINT}/BreakGlass/Encrypted" "${VC_MOUNT_POINT}4/" "0"
+}
+
+vc-dismount-keys() {
+    vc-dismount "${VC_MOUNT_POINT}4" 
+}
+
+### encrypted volumes
+
+init-vlt() {
+    vc-mount-vlt
+}
+
+term-vlt() {
+    vc-dismount-vlt
+    sudo eject "${MOUNT_POINT}/DukeOfMoles"
+}
+ 
+init-bkup() {
+    vc-mount-bkup
+}
+
+term-bkup() {
+    vc-dismount-bkup
+    sudo eject "${MOUNT_POINT}/VcntOfVoles"
+}
+
+init-dp-frz() {
+    vc-mount-dp-frz
+}
+
+term-dp-frz() {
+    vc-dismount-dp-frz
+    sudo eject "${MOUNT_POINT}/DaneOfDucks"
+}
+
+init-keys() {
+    vc-mount-keys
+}
+
+term-keys() {
+    vc-dismount-keys
+    sudo eject "${MOUNT_POINT}/BreakGlass"
+}
+
+init-all() {
+    fix-veracrypt
+    vc-mount-vlt
+    vc-mount-bkup
+    vc-mount-dp-frz
+    vc-mount-keys
+}
+
+term-all() {
+    vc-dismount-all
+    sudo eject "${MOUNT_POINT}/DukeOfMoles"
+    sudo eject "${MOUNT_POINT}/DaneOfDucks"
+    sudo eject "${MOUNT_POINT}/VcntOfVoles"
+    sudo eject "${MOUNT_POINT}/BreakGlass"
+}
+
+### from macbook
+
+## mounts/veracrypt
+
+alias veracrypt="/Applications/VeraCrypt.app/Contents/MacOS/VeraCrypt --text"
+alias fix-veracrypt="sudo /usr/bin/kmutil unload -b io.macfuse.filesystems.macfuse"
+
+vc-mount() {
+    veracrypt --mount "${1}" --mount "${2}" --pim "${3}" --keyfiles "" --protect-hidden no --verb
+se
+}
+
+vc-dismount() {
+    veracrypt --dismount "${1}"
+}
+
+vc-dismount-all() {
+    vc-dismount
+}
+
+## known volumes
+
+vc-mount-vlt() {
+    vc-mount "/Volumes/DukeOfMoles/Encrypted" "/Volumes/Vault" "0"
+}
+
+vc-dismount-vlt() {
+    vc-dismount "/Volumes/DukeOfMoles/Encrypted" "${@}"
+}
+
+vc-mount-bkup() {
+    vc-mount "/Volumes/VcntOfVoles/Encrypted" "/Volumes/Backup" "0"
+}
+
+vc-dismount-bkup() {
+    vc-dismount "/Volumes/VcntOfVoles/Encrypted"
+}
+
+vc-mount-dp-frz() {
+    vc-mount "/Volumes/DaneOfDucks/Encrypted" "/Volumes/Deep\ Freeze" "0"
+}
+
+vc-dismount-dp-frz() {
+    vc-dismount "/Volumes/DaneOfDucks/Encrypted"
+}
+
+vc-mount-keys() {
+    vc-mount "/Volumes/BreakGlass/Encrypted" "/Volumes/Keys" "0"
+}
+
+vc-dismount-keys() {
+    vc-dismount "/Volumes/BreakGlass/Encrypted"
+}
+
+## encrypted volume
+
+init-vlt() {
+    fix-veracrypt
+    vc-mount-vlt
+}
+
+term-vlt() {
+    vc-dismount-vlt "${@}"
+    sudo diskutil eject "/Volumes/DukeOfMoles"
+}
+
+init-bkup() {
+    fix-veracrypt
+    vc-mount-bkup
+}
+
+term-bkup() {
+    vc-dismount-bkup
+    sudo diskutil eject "/Volumes/VcntOfVoles"
+}
+
+init-dp-frz() {
+    fix-veracrypt
+    vc-mount-dp-frz
+}
+
+term-dp-frz() {
+    vc-dismount-dp-frz
+    sudo diskutil eject "/Volumes/DaneOfDucks"
+}
+
+init-keys() {
+    fix-veracrypt
+    vc-mount-bkup
+    vc-mount-keys
+}
+
+term-keys() {
+    vc-dismount-bkup
+    sudo diskutil eject "/Volumes/BreakGlass"
+}
+
+init-all() {
+    fix-veracrypt
+    vc-mount-vlt
+    vc-mount-bkup
+    vc-mount-keys
+}
+
+term-all() {
+    vc-dismount-all
+    sudo diskutil eject "/Volumes/DukeOfMoles"
+    sudo diskutil eject "/Volumes/VcntOfVoles"
+    sudo diskutil eject "/Volumes/DaneOfDucks"
+    sudo diskutil eject "/Volumes/BreakGlass"
+}
+

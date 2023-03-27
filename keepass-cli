@@ -1,0 +1,41 @@
+#!/bin/bash
+
+### from starbook
+
+## keepassxc
+
+open-kp-vlt() {
+    kpdb=`find "${VC_MOUNT_POINT}" -path "${DROPBOX_ROOT}" -not -path "*/.*" -not -path "*/*-Locked.kdbx" -type f -name "*.kdbx" | fzf +i --height=1%`
+    xdg-open ${kpdb}
+}
+
+# open-vlt() {
+#     keepassxc open /home/the.vole.viscount/Documents/Security/Passwords.kdbx -y 2
+# }
+# 
+# open-vlt-gui() {
+#     open /Volumes/Vault/Secrets/Passwords.kdbx -a /Applications/KeePassXC.app
+# }
+# 
+# get-pw() {
+#     keepassxc clip /Volumes/Vault/Secrets/Passwords.kdbx "${1}" "${2}" -b -y 2    
+# }
+
+### from macbook
+
+## keepassxc 
+
+alias keepassxc="/Applications/KeePassXC.app/Contents/MacOS/keepassxc-cli"
+
+open-vlt() {
+    keepassxc open /Volumes/Vault/Secrets/Passwords.kdbx -y 2
+}
+
+open-vlt-gui() {
+    open /Volumes/Vault/Secrets/Passwords.kdbx -a /Applications/KeePassXC.app
+}
+
+get-pw() {
+    keepassxc clip /Volumes/Vault/Secrets/Passwords.kdbx "${1}" "${2}" -b -y 2    
+}
+
