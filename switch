@@ -5,42 +5,63 @@ set -euo pipefail
 
 function help() {
 <<help
-    A script that's intended to make file tree navigation a little easier.
+Description
+
+    A script that's intended to make file tree navigation and finding/acting on 
+    files a little easier. This script is fundamentally a thin wrapper around a
+    find piped to fzf w/ some built in delighters:
+
+      * Automatic exclusion of hidden files; optionally overridable via -a (though
+        .git/ dirs are still hidden)
+      * Automatic search depth of 2; optionall overridable via -m
+      *
 help
 }
 
 
-FILE_TYPE=""
-FIND_PATH=()
 CMD=""
-TYPE_MODIFIER=""
+FIND_PATH=()
+
+FILE_TYPE=""
 MAX_DEPTH=2
+TYPE_MODIFIER=""
+
+SHOW_HIDDEN="false"
+TRIM="false"
 
 while [[ $# -gt 0 ]]; do
-    case $1 in
-     -c|--command)
+  case $1 in
+    -c|--command)
       CMD="${2}"
       shift
       shift
       ;;
-     -f|--file)
+    -f|--file)
       TYPE_MODIFIER="-type f"
       shift
       ;;
-     -d|--dir)
+    -d|--dir)
       TYPE_MODIFIER="-type d"
       shift
       ;;
-     -m|--maxdepth)
-      MAX_DEPTH="${2}"
+    -m|--maxdepth)
+      MAX_DEPTH=${2}
       shift
       shift
       ;;
-     -h|--help)
+    -a)
+      SHOW_HIDDEN="true"
+      shift
+      ;;
+    -t|--trim)
+      TRIM="true"
+      shift
+      ;;
+    -h|--help)
       help
       exit 0
       ;;
-     -*|--*)
+    -*|--*)
       help
       exit 1
       ;;
@@ -55,14 +76,23 @@ if [[ ${#FIND_PATH[@]} -eq 0 ]]; then
     FIND_PATH+=("$(pwd)")
 fi
 
-FOUND_PATH=$(find ${FIND_PATH} -maxdepth ${MAX_DEPTH} ${TYPE_MODIFIER} -not -path "*/\.git*" | fzf)
+# default to excluding hidden files; even if the caller indicates a desire to see
+# hidden files, we assume they don't want to search .git dirs; may revisit this if
+# this ends up not being the case...
+EXCLUDE="$([[ "${SHOW_HIDDEN}" = "false" ]] && echo "*/\.*" || echo "*/\.git*")"
+# trim trailing "/" just to make things pretty
+FIND_PATH="$(echo "${FIND_PATH}" | sed 's/\/[[:space:]]*$//')"
+FOUND_PATH=$(find ${FIND_PATH} -maxdepth ${MAX_DEPTH} ${TYPE_MODIFIER} -not -path "${EXCLUDE}" | fzf)
 
 if [[ -z "${FOUND_PATH}" ]]; then
     exit 0
 fi
 
+# if no command is provided, assume cd is desired for a dir, and opening in an 
+# editor is desired for a file
 if [[ -z "${CMD}" && -d "${FOUND_PATH}" ]]; then
-    CMD="cd"
+# can't cd from a script, so just echo the dir and assume the caller will handle it
+    echo "${FOUND_PATH}"
 elif [[ -z "${CMD}" && -f "${FOUND_PATH}" ]]; then
     CMD="${EDITOR}"
 fi

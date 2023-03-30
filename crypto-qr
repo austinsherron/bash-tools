@@ -1,0 +1,20 @@
+!#/bin/bash
+
+## crypto
+
+as-qr() {
+   qrencode -o qr.png "$1:$2?amount=$3" 
+}
+
+monero-qr() {
+    as-qr "monero" $1 $2
+    open qr.png
+}
+
+bitcoin-qr() {
+    as-qr "bitcoin" $1 $2
+    open qr.png
+}
+
+alias xmr-qr="monero-qr"
+alias btc-qr="bitcoin-qr"
