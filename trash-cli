@@ -1,0 +1,68 @@
+#!/bin/bash
+
+<< description
+This is a util script that wraps "trash-cli", a collection of utilities used to
+interact w/ the "trashcan's" from the command line. 
+
+My intent for this script is for it to act as a relatively transparent replacement
+for "rm", configured via alias in shell rcs/profiles.
+description
+
+MODIFIER=""
+TRASHCAN="${HOME}/.local/share/trash-internal"
+
+TRASH_PUT="trash-put"
+TRASH_CMD="trash-put"
+
+POSITIONALS=()
+ 
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -f|-rf|-fr|--force)
+            MODIFIER="${MODIFIER} -f"
+            shift
+            ;;
+        -r|-R|--recursive)
+            # doesn't apply to trash-cli, just ignore
+            shift
+            ;;
+        -t|--trash-dir)
+            TRASHCAN="${2}"
+            shift
+            shift
+            ;;
+        -v|--verbose)
+            MODIFIER="${MODIFIER} -v"
+            shift
+            ;;
+        -l|--ls|--list)
+            TRASH_CMD="trash-list"
+            shift
+            ;;
+        --call-rm)
+            TRASH_CMD="rm"
+            shift
+            ;;
+        -h|--help)
+            "${TRASH_PUT}" -h
+            exit 0
+            ;;
+        -*|--*)
+            "${TRASH_PUT}" -h
+            exit 1
+            ;;
+        *)
+            POSITIONALS+=("${1}")
+            shift
+            ;;
+    esac
+done
+
+if [[ "${TRASH_CMD}" != "${TRASH_PUT}" ]] &&
+   [[ "${TRASH_CMD}" !=  "rm" ]] ; then
+    return "${TRASH_CMD}" 
+fi
+
+CMD="${TRASH_CMD} ${MODIFIER} ${POSITIONALS[@]}"
+eval "${CMD}"
+
