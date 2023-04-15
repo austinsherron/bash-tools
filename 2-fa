@@ -16,13 +16,13 @@ DESCRIPTION
     A script that handles the details of decrypting and extracting tokens from 
     PGP encrypted 2-FA messages. 2-FA messages must be from known sources that
     have configuration entries in this script's config file. The default location
-    of the aforementioned config file is "${HOME}/.config/2-fa", and is CSV of the
-    form:
+    of the aforementioned config file is "${HOME}/.config/2-fa", and is a CSV of 
+    the form:
 
         2-FA source key,2-FA token prefix 
 
     The 2-FA token prefix is a unique character sequence in the 2-FA message that 
-    directly precedes the token. This prefix is used with grep to extract the token
+    directly precedes the token. This prefix is used w/ grep to extract the token
     from the decrypted message.
 
     The 2-FA message to be decrypted can read via -m|--message or the clipboard.
