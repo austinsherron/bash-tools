@@ -1,0 +1,123 @@
+#!/bin/bash
+ 
+set -euo pipefail
+
+
+USAGE="2-fa [-v] [-c path] [-m path] 2FA_SOURCE_KEY"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    A script that handles the details of decrypting and extracting tokens from 
+    PGP encrypted 2-FA messages. 2-FA messages must be from known sources that
+    have configuration entries in this script's config file. The default location
+    of the aforementioned config file is "${HOME}/.config/2-fa", and is a CSV of 
+    the form:
+
+        2-FA source key,2-FA token prefix 
+
+    The 2-FA token prefix is a unique character sequence in the 2-FA message that 
+    directly precedes the token. This prefix is used w/ grep to extract the token
+    from the decrypted message.
+
+    The 2-FA message to be decrypted can read via -m|--message or the clipboard.
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+    
+    2FA_SOURCE      a key that maps to a configured 2-FA source
+
+OPTIONS
+
+    -c, --config    an optional path to a 2-FA config file
+    -m, --message   an optional path to an encrypted 2-FA message
+    -v, --verbose   when specified, the token will be sent to stdout as well as 
+                    to the clipboard
+    -h, --help      print this message
+help
+}
+
+
+VERBOSE="false"
+
+CONFIG_PATH="${HOME}/.config/2-fa"
+MSG_PATH=""
+
+MSG_CONTENT=""
+TWO_FA_SRC=""
+TOKEN_PREFIX=""
+
+
+get-2fa-token-prefix() {
+    echo "$(grep "^${TWO_FA_SRC}," ${CONFIG_PATH} | cut -d , -f2)"
+}
+
+get-2fa-token() {
+    echo "$(echo "${MSG_CONTENT}" | gpg -d | grep "${TOKEN_PREFIX}" | cut -d ':' -f2 | xargs)"
+}
+
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -c|--config)
+      CONFIG_PATH="${2}"
+      shift
+      shift
+      ;;
+    -m|--message)
+      MSG_PATH="${2}"
+      shift
+      shift
+      ;;
+    -v|--verbose)
+      VERBOSE="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    -*|--*)
+      usage
+      exit 1
+      ;;
+     *)
+      TWO_FA_SRC="${1}"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "${TWO_FA_SRC}" ]]; then
+    usage
+    exit 1
+fi 
+
+MSG_CONTENT="$([[ -n "${MSG_PATH}" && -s "${MSG_PATH}" ]] && cat "${MSG_PATH}" || pbpaste)"
+
+if [[ -z "${MSG_CONTENT}" ]]; then
+    SRC_MOD="$([[ -n "${MSG_PATH}" ]] && echo "${MSG_PATH} doesn't exist/is empty and " || echo "")"
+    echo "No 2-FA message to decrypt: ${SRC_MOD}your clipboard is empty"
+    exit 1
+fi
+
+TOKEN_PREFIX="$(get-2fa-token-prefix)"
+
+if [[ -z "${TOKEN_PREFIX}" ]]; then
+    echo "Unable to find 2-FA token prefix for \"${TWO_FA_SRC}\" in \"${CONFIG_PATH}\""
+    exit 1
+fi
+
+TOKEN="$(get-2fa-token)"
+
+[[ "${VERBOSE}" = "true" ]] && echo "${TOKEN}"
+echo "${TOKEN}" | pbcopy
+
