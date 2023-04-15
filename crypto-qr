@@ -1,0 +1,129 @@
+#!/bin/bash
+
+set -euo pipefail
+
+
+USAGE="crypto-qr -t total -a address -c currency [-p path] [--config path] [-v]"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    A script that generates the qr-codes given an amount, an address hash, and a
+    type of cryptocurrency (or currency alias). Supported currencies are configured 
+    in a config file located at "${HOME}/.config/crypto" (or the file at the path 
+    provided w/ the "-t" flag. The aforementioned configuration file should be 
+    of the form:
+
+        crypto alias,crypto name
+
+    If an alias is provided w/ "-c", the crypto-jurrency name associated w/ that
+    alias will be used to generate the qr. If no row is found for the value provided 
+    w/ "-c", it's assumed that it's a crypo-currency name. In that case, the value is
+    directly used to generate the qr.
+
+    QR image files are saved as temp files unless otherwise specified via "-p".
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -t, --total       the currency amount to embed in the qr code (how much to send)
+    -a, --address     the wallet address to embed in the qr code (where to send)
+    -c, --currency    the currency, or an alias associated w/ a currency via the
+                      script's config file, to embed in the qr code (what to send)
+    -p, --path        optional; the path to which to save the qr image file
+    --config          optional; the path to a config file that maps aliases to crypto-
+                      currency names
+    -v, --verbose     optional; send the qr image path, as well as the data embedded in
+                      the image, to stdout
+    -h, --help        print this message
+help
+}
+
+
+CONFIG_PATH="${HOME}/.config/crypto"
+
+TOTAL=""
+ADDRESS=""
+CURRENCY=""
+IMG_PATH="$(mktemp -t crypto-qr).png"
+VERBOSE="false"
+
+
+get-currency-name-from-alias() {
+    [[ -s "${CONFIG_PATH}" ]] && echo "$(grep ${CURRENCY} ${CONFIG_PATH} | cut -d , -f2)" || echo ""
+}
+
+qr-string() {
+    echo "${CURRENCY}:${ADDRESS}?amount=${TOTAL}"
+}
+
+as-qr() {
+    qrencode -o ${IMG_PATH} "$(qr-string)" 
+}
+
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -t|--total)
+      TOTAL="${2}"
+      shift
+      shift
+      ;;
+    -a|--address)
+      ADDRESS="${2}"
+      shift
+      shift
+      ;;
+    -c|--currency)
+      CURRENCY="${2}"
+      shift
+      shift
+      ;;
+    -p|--path)
+      IMG_PATH="${2}"
+      shift
+      shift
+      ;;
+    --config)
+      CONFIG_PATH="${2}"
+      shift
+      shift
+      ;;
+    -v|--verbose)
+      VERBOSE="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *|-*|--*)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+CURRENCY_FROM_CONFIG="$(get-currency-name-from-alias)"
+
+if [[ -n "${CURRENCY_FROM_CONFIG}" ]]; then
+    CURRENCY="${CURRENCY_FROM_CONFIG}"
+fi
+
+if [[ "${VERBOSE}" = "true" ]]; then 
+    echo "$(qr-string)"
+    echo "${IMG_PATH}"
+fi
+
+as-qr
+
+open "${IMG_PATH}"
+
