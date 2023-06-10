@@ -1,0 +1,99 @@
+#!/bin/bash
+
+set -euo pipefail
+
+
+USAGE="install -t user [-v] [--dry-run]"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Installs systemd units for the provided type -t. "Installation" in this
+    context means cp'ing them to the relevant systemd dir in /usr/lib/.
+
+    Note: this script does not call `systemctl enable`.
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -t, --type        required; the type of systemd unit (at the time of writing,
+                      user is the only one supported)
+    -v, --verbose     optional; if provided, the script prints execution information 
+                      to the console
+    --dry-run         optional; runs the script w/out making state changes
+    -h, --help        print this message
+help
+}
+
+TYPE=""
+VALID_TYPES="user"
+
+VERBOSE="false"
+DRY_RUN="false"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -t|--type)
+      TYPE="${2}"
+      shift
+      shift
+      ;;
+    -v|--verbose)
+      VERBOSE="true"
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *|-*|--*)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+## validate args
+
+if [[ -z "${TYPE}" ]]; then
+    echo "-t|--type is required"
+    exit 1
+fi
+
+# a bit of over-engineering here, but I _do_ imagine needing to install
+# different types of units
+if [[ ! "${TYPE}" =~ ^(user)$ ]]; then
+    echo "-t|--type ${TYPE} is not one of ${VALID_TYPES}"
+    exit 1
+fi
+
+DST="/usr/lib/systemd/user/"    # note: needs to change if more options for -t are added
+
+PATTERNS="-name \"*.path\" -o -name \"*.service\""
+FIND_CMD="$([[ "${DRY_RUN}" == "true" ]] && echo "-print" || echo "-exec cp {} ${DST} \\;")"
+
+## exec
+
+if [[ "${VERBOSE}" == "true" ]]; then
+    echo "Preparing to copy ${TYPE} units to ${DST}"
+fi
+
+if [[ "${VERBOSE}" == "true" ]] || [[ "${DRY_RUN}" == "true" ]]; then
+    echo "sudo find ${TOOLS_ROOT}/systemd/ \( ${PATTERNS} \) ${FIND_CMD}"
+fi
+
+FIND_CMD="sudo find ${TOOLS_ROOT}/systemd/ \( ${PATTERNS} \) ${FIND_CMD}"
+eval "${FIND_CMD}"
+
