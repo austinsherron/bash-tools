@@ -1,0 +1,10 @@
+[Unit]
+Description="Monitor ~/Downloads/librewolf-stg-backups/ for new files and move them/rm the dir"
+
+[Path]
+PathChanged=/home/austin/Downloads/librewolf-stg-backups/
+PathExists=/home/austin/Downloads/librewolf-stg-backups/
+Unit=mv-stg-backups.service
+
+[Install]
+WantedBy=default.target
