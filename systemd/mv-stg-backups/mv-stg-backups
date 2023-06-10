@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -euo pipefail
+
+
+mv /home/austin/Downloads/librewolf-stg-backups/* /home/austin/Backups/Browsers/librewolf/simple-tab-groups
+rm -rf /home/austin/Downloads/librewolf-stg-backups
+
