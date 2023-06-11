@@ -1,0 +1,5 @@
+[Unit]
+Description="Service unit (runner) for script that regularly backs up user files"
+
+[Service]
+ExecStart=/usr/local/systemd/mv-stg-backups
