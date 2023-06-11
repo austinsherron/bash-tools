@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 
-USAGE="timeshift [-c path] [--dry-run]"
+USAGE="do-backup [-c path] [--dry-run]"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -26,7 +26,7 @@ DESCRIPTION
         args: additional flags to pass to rsync (optional)
         keep: "keep # incremental backups" (optional)
 
-    If no file is passed via -c, the script will look for the file 
+    If no file is passed via -c, the script will look for the file
     $HOME/.config/backup/config.yaml. If no such file exists, the script will
     exit.
 
@@ -79,9 +79,8 @@ fi
 
 # extract args from config file; no need for validation (besides keep), as the
 # downstream script will do that for us; note: the somewhat awkward looking "//"
-# syntax is how we default to empty string if optional parameters are omitted
-# instead of ending up w/ "null"s
-
+# syntax is how we default to empty string instead of "null"s if optional 
+# parameters are omitted
 
 SCRIPT_PATH="$(yq ".path" "${CONFIG}")"
 SOURCE_PATH="$(yq ".src" "${CONFIG}")"
@@ -108,19 +107,19 @@ CMD="${CMD} $([[ "${DRY_RUN}" == "true" ]] && echo "--dry-run" || echo "")"
 
 # exec
 
-eval "sudo ${CMD}"
+eval "${CMD}"
 
-# remove oldest backup, if the number of backups exceeds the threshold specified
+# remove oldest backup if the number of backups exceeds the threshold specified
 # by keep; a few assumptions about this:
 #
-# 1) it assumes there are no files/dirs in $BACKUP_PARENT except those managed by
-#    the incremental backup script (i.e.: backup dirs and the "latest" link)
-# 2) the "latest" link's name is hardcoded
-# 3) we don't have to worry about concurrent executions of the incremental backup
-#    script, so we only need to delete one backup dir at a time
+# 1) that there are no files/dirs in $BACKUP_PARENT except those managed by the
+#    incremental backup script (i.e.: backup dirs and the "latest" link)
+# 2) that the "latest" link's name is hardcoded
+# 3) that we don't have to worry about concurrent executions of the incremental
+#    backup script, so we only need to potentially delete one backup dir at a time
 # 4) we don't need to explicitly respect the --dry-run flag, as no backup dir
 #    should have been created by the backup script if the --dry-run flag is passed
-#    to it
+#    and respected
 
 BACKUPS_LS="$(ls "${BACKUP_PARENT}" | grep -v latest | sort)"
 NUM_BACKUPS="$(echo "${BACKUPS_LS}" | wc -l)"
@@ -130,5 +129,5 @@ if [[ "${NUM_BACKUPS}" -le "${KEEP}" ]]; then
 fi
 
 OLDEST="${BACKUP_PARENT}/$(echo "${BACKUPS_LS}" | head -1)"
-sudo rm "${OLDEST}"
+rm "${OLDEST}"
 
