@@ -1,0 +1,11 @@
+[Unit]
+Description=Perform regular backups of user files
+Requires=run-backup.service
+
+[Timer]
+AccuracySec=3h
+OnCalendar=*-*-* 21:*:*
+Unit=run-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# note: must be run in root user login shell (i.e.: sudo -i)
+
+set -Eeuo pipefail
+
+
+# install runnable
+cp ${TOOLS_ROOT}/system/systemd/mv-stg-backups/mv-stg-backups /usr/local/systemd/
+# install systemd user units
+install-units -d ${TOOLS_ROOT}/system/systemd/mv-stg-backups -o user -t path
+

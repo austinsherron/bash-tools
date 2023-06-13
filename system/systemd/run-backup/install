@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# note: must be run in root user login shell (i.e.: sudo -i)
+
+set -Eeuo pipefail
+
+# install runnables
+ln -sf ${TOOLS_ROOT}/system/backup/incremental-backup ${SHARED_BINS}
+ln -sf ${TOOLS_ROOT}/system/backup/do-backup ${SHARED_BINS}
+
+# install config
+mkdir -p ${SHARED_CONFIG_ROOT}/backup
+cp -r ${INT_TOOLING_ROOT}/backup/ ${SHARED_CONFIG_ROOT}/
+
+# install systemd system units
+install-units -d ${TOOLS_ROOT}/system/systemd/run-backup -o system -t timer
+

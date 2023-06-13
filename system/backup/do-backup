@@ -1,0 +1,148 @@
+#!/bin/bash
+
+set -Eeuo pipefail
+
+
+USAGE="do-backup [-c path] [--dry-run]"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    A script that orchestrates incremental backups. Backups are parameterized
+    by parameters provided via a yaml config file passed with the -c flag.
+    Config files are of the following form:
+
+        path: "/path/to/incremental-backup"
+        src: "/path/to/src/of/incremental/backup"
+        dst: "/path/to/dst/of/incremental/backup"
+        filters:   (optional, but both are required if block is used)
+          type: "type of rsync filter"
+          file: "path to rsync filter file
+        flags: additional flags to pass to rsync (optional)
+        extra: anything additional to pass to the rsync command (optional)
+        keep: "keep # incremental backups" (optional)
+
+    If no file is passed via -c, the script will look for the file in the following
+    locations, in order:
+
+    * ~/.config/backup/config.yaml
+    * /usr/local/etc/backup/config.yaml
+
+    If none of the above paths are found, the script will exit.
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -c, --config    optional; a path to a yaml file that parameterizes backups;
+                    if not provided, the script tries to use multiple possible defaults
+    --dry-run       optional; indicates that the script should print hypotheical
+                    results to the console, but make no state changes
+    -h, --help      display this message
+
+help
+}
+
+
+DEFAULT_CONFIG="~/.config/backup/config.yaml"
+FALLBACK_CONFIG="/usr/local/etc/backup/config.yaml"
+
+CONFIG=""
+DRY_RUN=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -c|--config)
+      CONFIG="${2}"
+      shift
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *|-*|--*)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "${CONFIG}" && -s "${DEFAULT_CONFIG}" ]]; then
+    CONFIG="${DEFAULT_CONFIG}"
+elif [[ -z "${CONFIG}" && -s "${FALLBACK_CONFIG}" ]]; then
+    CONFIG="${FALLBACK_CONFIG}"
+elif [[ -z "${CONFIG}" ]]; then
+    echo "No config found at ${FALLBACK_CONFIG}; exiting"
+    exit 1
+fi
+
+# extract args from config file; no need for validation (besides keep), as the
+# downstream script will do that for us; note: the somewhat awkward looking "//"
+# syntax is how we default to empty string instead of "null"s if optional 
+# parameters are omitted
+
+SCRIPT_PATH="$(cat "${CONFIG}" | yq ".path")"
+SOURCE_PATH="$(cat "${CONFIG}" | yq ".src")"
+BACKUP_PARENT="$(cat "${CONFIG}" | yq ".dst")"
+FILTER_TYPE="$(cat "${CONFIG}" | yq ".filters.type // \"\"")"
+FILTER_FILE="$(cat "${CONFIG}" | yq ".filters.file // \"\"")"
+EXTRA_FLAGS="$(cat "${CONFIG}" | yq ".flags // \"\"")"
+EXTRA="$(cat "${CONFIG}" | yq ".extra // \"\"")"
+KEEP="$(cat "${CONFIG}" | yq ".keep // \"\"")"
+
+if [[ -n "${KEEP}" && "${KEEP}" -lt 1 ]]; then
+    echo "keep must be > 0"
+    exit 1
+fi
+
+# build up command based on presence of args in config
+
+CMD="${SCRIPT_PATH}"
+CMD="${CMD} $([[ -z ${SOURCE_PATH}   ]] && echo "" || echo "-s ${SOURCE_PATH}")"
+CMD="${CMD} $([[ -z ${BACKUP_PARENT} ]] && echo "" || echo "-d ${BACKUP_PARENT}")"
+CMD="${CMD} $([[ -z ${FILTER_TYPE}   ]] && echo "" || echo "-t ${FILTER_TYPE}")"
+CMD="${CMD} $([[ -z ${FILTER_FILE}   ]] && echo "" || echo "-f ${FILTER_FILE}")"
+CMD="${CMD} $([[ -z ${EXTRA_FLAGS}   ]] && echo "" || echo "-a ${EXTRA_FLAGS}")"
+CMD="${CMD} $([[ -z ${EXTRA}         ]] && echo "" || echo "-e ${EXTRA}")"
+CMD="${CMD} $([[ "${DRY_RUN}" == "true" ]] && echo "--dry-run" || echo "")"
+
+# exec
+
+eval "${CMD}"
+
+# remove oldest backup if the number of backups exceeds the threshold specified
+# by keep; a few assumptions about this:
+#
+# 1) that there are no files/dirs in $BACKUP_PARENT except those managed by the
+#    incremental backup script (i.e.: backup dirs and the "latest" link)
+# 2) that the "latest" link's name is hardcoded
+
+BACKUPS_LS="$(ls "${BACKUP_PARENT}" | grep -v latest | sort)"
+NUM_BACKUPS="$(echo "${BACKUPS_LS}" | wc -l)"
+
+if [[ "${NUM_BACKUPS}" -le "${KEEP}" ]]; then
+    exit 0
+fi
+
+let "N_TO_DELETE=$NUM_BACKUPS - $KEEP"
+
+for d in ${BACKUP_PARENT}/$(echo "${BACKUPS_LS}" | head "-${N_TO_DELETE}"); do
+    if [[ "${DRY_RUN}" == "true" ]]; then
+        echo "rm -rf $d"
+    else
+        rm -rf "${d}"
+    fi
+done
+
