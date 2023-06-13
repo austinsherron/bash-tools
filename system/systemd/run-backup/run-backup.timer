@@ -1,5 +1,5 @@
 [Unit]
-Description="Perform regular backups of user files"
+Description=Perform regular backups of user files
 Requires=run-backup.service
 
 [Timer]
