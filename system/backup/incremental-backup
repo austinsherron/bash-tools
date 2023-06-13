@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 
-USAGE="do-backup -s path -d path [-t filter-type -f path] [-a flags]"
+USAGE="incremental-backup -s path -d path [-t filter-type -f path] [-a flags] [-e extra]"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -30,7 +30,9 @@ OPTIONS
                         to apply
     -f, --filter-file   optional, must be passed w/ -t; a path to a file that
                         contains rsync filters
-    -a, --args          optional; additional rsync flags
+    -a, --flags         optional; additional rsync flags
+    -e, --extra         optional; anything extra to add to the rsync command, after 
+                        flags
     --dry-run           optional; indicates that the script should print hypotheical
                         results to the console, but make no state changes
     -h, --help          display this message
@@ -42,7 +44,8 @@ SOURCE_PATH=""
 BACKUP_PARENT=""
 FILTER_TYPE=""
 FILTER_FILE=""
-EXTRA_ARGS=""
+EXTRA_FLAGS=""
+EXTRA=""
 DRY_RUN=""
 
 FILTERS=""
@@ -70,8 +73,13 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
-    -a|--args)
-      EXTRA_ARGS="${2}"
+    -a|--flags)
+      EXTRA_FLAGS="${2}"
+      shift
+      shift
+      ;;
+    -e|--extra)
+      EXTRA="${2}"
       shift
       shift
       ;;
@@ -92,13 +100,13 @@ done
 
 ## validate args
 
-if [[ -z "${SOURCE_PATH}" ]]; then
-    echo "-s|--source is required"
+if [[ -z "${SOURCE_PATH}" || ! -d "${SOURCE_PATH}" ]]; then
+    echo "-s|--source is required and must refer to a valid directory"
     exit 1
 fi
 
-if [[ -z "${BACKUP_PARENT}" ]]; then
-    echo "-d|--dest is required"
+if [[ -z "${BACKUP_PARENT}" || ! -d "${BACKUP_PARENT}" ]]; then
+    echo "-d|--dest is required and must refer to a valid directory"
     exit 1
 fi
 
@@ -118,8 +126,12 @@ if [[ -n "${FILTER_TYPE}" ]]; then
     FILTERS="--filter=${FILTER_TYPE} ${FILTER_FILE}"
 fi
 
-if [[ -n "${EXTRA_ARGS}" ]]; then
-    ARGS="${ARGS}${EXTRA_ARGS}"
+if [[ -n "${EXTRA_FLAGS}" ]]; then
+    ARGS="${ARGS}${EXTRA_FLAGS}"
+fi
+
+if [[ -n "${EXTRA}" ]]; then
+    ARGS="${ARGS} ${EXTRA}"
 fi
 
 ## construct internal script args
@@ -178,7 +190,7 @@ if [[ -n "${DRY_RUN}" ]]; then
     echo "rsync ${ARGS} --delete ${LINK_DEST} ${DRY_RUN} ${FILTERS} ${SOURCE_PATH} ${BACKUP_PATH}"
 fi
 
-rsync "${ARGS}" --delete "${LINK_DEST}" "${DRY_RUN}" "${FILTERS}" "${SOURCE_PATH}" "${BACKUP_PATH}"
+rsync ${ARGS} --delete "${LINK_DEST}" "${DRY_RUN}" "${FILTERS}" "${SOURCE_PATH}" "${BACKUP_PATH}"
 
 # unlink previous "latest" pointer, if it exists
 if [[ -n "${DRY_RUN}" ]] && [[ -d "${LATEST_LINK}" ]]; then

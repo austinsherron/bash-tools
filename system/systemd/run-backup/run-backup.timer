@@ -1,10 +1,11 @@
 [Unit]
-Description="Monitor ~/Downloads/librewolf-stg-backups/ for new files and move them/rm the dir"
+Description="Perform regular backups of user files"
+Requires=run-backup.service
 
-[Path]
-PathChanged=/home/austin/Downloads/librewolf-stg-backups/
-PathExists=/home/austin/Downloads/librewolf-stg-backups/
-Unit=mv-stg-backups.service
+[Timer]
+AccuracySec=3h
+OnCalendar=*-*-* 21:*:*
+Unit=run-backup.service
 
 [Install]
-WantedBy=default.target
+WantedBy=timers.target
