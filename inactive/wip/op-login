@@ -1,6 +1,11 @@
 #!/bin/bash
 
 
+set -e 
+set -u 
+set -o pipefail
+
+
 function help() {
 cat << EOF
 This script is a convenience utility for logging into 1password from the CLI
@@ -42,6 +47,5 @@ else
     exit 1
 fi
 
-echo "${org}"
-eval $(op signin ${org})
+eval $(op signin --account ${org})
 
