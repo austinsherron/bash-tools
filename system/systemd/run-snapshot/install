@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# note: must be run in root user login shell (i.e.: sudo -i)
+
+set -Eeuo pipefail
+
+
+# install runnables
+ln -sf ${TOOLS_ROOT}/system/snapshot/take-snapshot ${SHARED_BINS}
+ln -sf ${TOOLS_ROOT}/system/snapshot/snapshot ${SHARED_BINS}
+
+# install config
+mkdir -p ${SHARED_CONFIG_ROOT}/snapshot
+cp -r ${INT_TOOLING_ROOT}/snapshot/ ${SHARED_CONFIG_ROOT}/
+
+# install systemd system units
+install-units -d ${TOOLS_ROOT}/system/systemd/run-snapshot -o system -t timer
+

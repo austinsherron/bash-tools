@@ -1,0 +1,11 @@
+[Unit]
+Description=Take regular snapshots (backups) of user files
+Requires=run-snapshot.service
+
+[Timer]
+AccuracySec=6h
+OnUnitInactiveSec=24h
+Unit=run-snapshot.service
+
+[Install]
+WantedBy=timers.target
