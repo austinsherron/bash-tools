@@ -2,18 +2,53 @@
 
 This repo contains--or is intended to contain--production ready scripts that I regularly use in my day-to-day workflows. Lots of work is necessary before I get to that point.
 
-## Manifest
+## Contents
+
+### Structure
+
+```
+.
+├── inactive
+│   ├── deprecated
+│   └── wip
+├── system
+│   ├── backup
+│   │   ├── do-backup
+│   │   └── incremental-backup
+│   └── systemd
+│       ├── install-units
+│       ├── mv-stg-backups
+│       └── run-backup
+└── util
+    └── web
+```
+
+#### Inactive
+
+Scripts under inactive are either in development, hopelessly malfunctioning w/ little to no hope of being fixed in the near-mid term, or just really no longer necessary/useful. 
+
+#### System
+
+Anything related to "system" mana
+
+### Manifest
+
+###
 
 **TODO**
 
-## Pending Tasks
+## To-Do List(s)
 
-* Cleanup/deprecate scripts
-* Write unit tests
+### New Tools
 
-## Future Work
+- [ ] run-backup system
 
-### Script Ideas
+### Tasks/Fixes
+
+- [ ] Cleanup/deprecate scripts
+- [ ] Write unit tests
+
+## Fanciful Ideas
 
 * **Deprecated** once I discovered [zoxide](https://github.com/ajeetdsouza/zoxide)
 ~~* fzf based `switch` utility that reads key to path mappings to search~~
@@ -31,3 +66,4 @@ This repo contains--or is intended to contain--production ready scripts that I r
   * intended to add .dropbox-ignore files in git repo dirs
   * thinking about it though, this could be accomplished w/ the first
     script I describe...
+

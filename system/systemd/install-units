@@ -1,0 +1,114 @@
+#!/bin/bash
+
+set -Eeuo pipefail
+
+
+USAGE="install-units -d path -o owner [[-t type]...[-t type]] [-v] [--dry-run]"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    This script looks in dir -d for systemd units of type(s) passed via -t (as well as
+    .service units), and if found, installs them. Installation in this context means cp'ing
+    them to the /usr/lib/systemd/ dir relevant to the owner specified by -o.
+
+    Note: this script does not call \`systemctl enable\`.
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -d, --dir       required; the dir in which to search for systemd units to install
+    -o, --owner     required; the owner of the systemd unit, and in this context, the
+                    /usr/lib/systemd/ dir where systemd units found by this script will be installed
+    -t, --type      optional; multi; "service" is always included; the types of systemd units to 
+                    search for and install if found
+    -v, --verbose   optional; if provided, the script prints execution information to the console
+    --dry-run       optional; runs the script w/out making state changes
+    -h, --help      print this message
+help
+}
+
+DIR=""
+DST=""
+TYPES=("service")
+
+VERBOSE="false"
+DRY_RUN="false"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -d|--dir)
+      DIR="${2}"
+      shift
+      shift
+      ;;
+    -o|--owner)
+      DST="/usr/lib/systemd/${2}"
+      shift
+      shift
+      ;;
+    -t|--type)
+      TYPES+=("${2}")
+      shift
+      shift
+      ;;
+    -v|--verbose)
+      VERBOSE="true"
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *|-*|--*)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+## validate args
+
+if [[ -z "${DIR}" || ! -d "${DIR}" ]]; then
+    echo "-d|--dir is required and must refer to a directory"
+    exit 1
+fi
+
+# $DST will be empty if -o was never specified
+if [[ -z "${DST}" || ! -d "${DST}" ]]; then
+    echo "-o|--owner is required and must refer to a systemd owner"
+    exit 1
+fi
+
+## prepare script params
+
+# construct find glob pattern for provided unit types
+PATTERNS="-name \"*.${TYPES[0]}\""
+for type in "${TYPES[@]:1}"; do
+    PATTERNS="${PATTERNS} -o -name \"*.${type}\""
+done
+
+FIND_CMD="$([[ "${DRY_RUN}" == "true" ]] && echo "-print" || echo "-exec cp {} ${DST} \\;")"
+FIND="find ${DIR} \( ${PATTERNS} \) ${FIND_CMD}"
+
+## exec
+
+if [[ "${VERBOSE}" == "true" ]]; then
+    echo "Preparing to copy units to ${DST}"
+    echo "${FIND}"
+fi
+
+eval "${FIND}"
+

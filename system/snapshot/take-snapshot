@@ -1,0 +1,208 @@
+#!/bin/bash
+
+set -Eeuo pipefail
+
+
+USAGE="take-snapshot -s path -d path [-t filter-type -f path] [-a flags] [-e extra]"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    A script that uses rsync to perform incremental backups, or snapshots of a
+    source, -s, to a destination, -d. Default rsync flags are "aAXp". Additional
+    flags can be passed to rsync via -a. A file containing filters can be passed
+    to rsync via -f along with a keyword indicating the rsync filter type via -t.
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -s, --src           required; the path to the dir being backed up
+    -d, --dst           required; the path to the parent of the snapshot dir
+    -t, --filter-type   optional, must be passed w/ -f; the type of rsync filters
+                        to apply
+    -f, --filter-file   optional, must be passed w/ -t; a path to a file that
+                        contains rsync filters
+    -a, --flags         optional; additional rsync flags
+    -e, --extra         optional; anything extra to add to the rsync command, after 
+                        flags
+    --dry-run           optional; indicates that the script should print hypotheical
+                        results to the console, but make no state changes
+    -h, --help          display this message
+help
+}
+
+
+SOURCE_PATH=""
+SNAPSHOT_PARENT=""
+FILTER_TYPE=""
+FILTER_FILE=""
+EXTRA_FLAGS=""
+EXTRA=""
+DRY_RUN=""
+
+FILTERS=""
+ARGS="-aAXp"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -s|--source)
+      SOURCE_PATH="${2}"
+      shift
+      shift
+      ;;
+    -d|--dest)
+      SNAPSHOT_PARENT="${2}"
+      shift
+      shift
+      ;;
+    -t|--filter-type)
+      FILTER_TYPE="${2}"
+      shift
+      shift
+      ;;
+    -f|--filter-file)
+      FILTER_FILE="${2}"
+      shift
+      shift
+      ;;
+    -a|--flags)
+      EXTRA_FLAGS="${2}"
+      shift
+      shift
+      ;;
+    -e|--extra)
+      EXTRA="${2}"
+      shift
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN="--dry-run"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *|-*|--*)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+## validate args
+
+if [[ -z "${SOURCE_PATH}" || ! -d "${SOURCE_PATH}" ]]; then
+    echo "-s|--source is required and must refer to a valid directory"
+    exit 1
+fi
+
+if [[ -z "${SNAPSHOT_PARENT}" || ! -d "${SNAPSHOT_PARENT}" ]]; then
+    echo "-d|--dest is required and must refer to a valid directory"
+    exit 1
+fi
+
+if [[ -z "${FILTER_TYPE}"  ]] && [[ -n "${FILTER_FILE}" ]]; then
+    echo "both -t|--filter-type and -f|--filter-file must be specified"
+    exit 1
+fi
+
+if [[ -n "${FILTER_TYPE}"  ]] && [[ -z "${FILTER_FILE}" ]]; then
+    echo "both -t|--filter-type and -f|--filter-file must be specified"
+    exit 1
+fi
+
+## construct args
+
+if [[ -n "${FILTER_TYPE}" ]]; then
+    FILTERS="--filter=${FILTER_TYPE} ${FILTER_FILE}"
+fi
+
+if [[ -n "${EXTRA_FLAGS}" ]]; then
+    ARGS="${ARGS}${EXTRA_FLAGS}"
+fi
+
+if [[ -n "${EXTRA}" ]]; then
+    ARGS="${ARGS} ${EXTRA}"
+fi
+
+## construct internal script args
+
+DATETIME="$(date '+%Y-%m-%d_%H:%M:%S')"
+SNAPSHOT_PATH="${SNAPSHOT_PARENT}/${DATETIME}"
+LATEST_LINK="${SNAPSHOT_PARENT}/latest"
+# only include "--link-dest" if "latest" link exists, i.e.: if this isn't the first run
+LINK_DEST="$([[ -d "${LATEST_LINK}" ]] && echo "--link-dest=${LATEST_LINK}" || echo "")"
+
+## trap execution errors and perform any necessary cleanup
+
+trap 'cleanup $? $LINENO' ERR
+
+cleanup() {
+    echo "Error encountered: (${1}) on ${2}"
+    echo "Cleaning up..."
+
+    # remove the newest snapshot; it might be fine, but it's non-trivial (impossible)
+    # to really know if the error we hit means the snapshot is borked
+    if [[ -d "${SNAPSHOT_PATH}" ]]; then
+        echo "Removing new, potentially incomplete/corrupt snapshot at ${SNAPSHOT_PATH}"
+        rm -rf "${SNAPSHOT_PATH}"
+    fi
+
+    # find the new latest snapshot to tag it as such
+    LATEST_SNAPSHOT="${SNAPSHOT_PARENT}/$(ls "${SNAPSHOT_PARENT}" | grep -v latest | sort -r | head -1)"
+
+    # but exit if we can't find one
+    if [[ ! -d "${LATEST_SNAPSHOT}" ]]; then
+        echo "Cannot find valid snapshot for latest link: ${LATEST_SNAPSHOT} does not exist; exiting" 
+        exit 0
+    fi
+
+    # if the latest link exists, just unlink and re-link, as it's quicker/easier
+    # than checking it's validity and linking conditionally
+    if [[ -d "${LATEST_LINK}" ]]; then
+        unlink "${LATEST_LINK}" 
+    fi
+
+    ln -s "${LATEST_SNAPSHOT}" "${LATEST_LINK}"
+}
+
+
+## exec
+
+# make new snapshot dir
+if [[ -n "${DRY_RUN}" ]]; then
+    echo "mkdir ${SNAPSHOT_PATH}"
+else
+    mkdir -p "${SNAPSHOT_PATH}"
+fi
+
+# run rsync
+if [[ -n "${DRY_RUN}" ]]; then
+    echo "rsync ${ARGS} --delete ${LINK_DEST} ${DRY_RUN} ${FILTERS} ${SOURCE_PATH} ${SNAPSHOT_PATH}"
+fi
+
+rsync ${ARGS} --delete "${LINK_DEST}" "${DRY_RUN}" "${FILTERS}" "${SOURCE_PATH}" "${SNAPSHOT_PATH}"
+
+# unlink previous "latest" pointer, if it exists
+if [[ -n "${DRY_RUN}" ]] && [[ -d "${LATEST_LINK}" ]]; then
+    echo "unlink ${LATEST_LINK}"
+elif [[ -d "${LATEST_LINK}" ]]; then
+    unlink "${LATEST_LINK}"
+fi
+
+# create new "latest" pointer
+if [[ -n "${DRY_RUN}" ]]; then
+    echo "ln -s ${SNAPSHOT_PATH} ${LATEST_LINK}"
+else
+    ln -s "${SNAPSHOT_PATH}" "${LATEST_LINK}"
+fi
+
