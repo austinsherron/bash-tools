@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 
-USAGE="incremental-backup -s path -d path [-t filter-type -f path] [-a flags] [-e extra]"
+USAGE="take-snapshot -s path -d path [-t filter-type -f path] [-a flags] [-e extra]"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -13,10 +13,10 @@ help() {
 cat <<help
 DESCRIPTION
 
-    A script that uses rsync to perform incremental backups of a source, -s, to
-    a destination, -d. Default rsync flags are "aAXp". Additional flags can be
-    passed to rsync via -a. A file containing filters can be passed to rsync via
-    -f along with a keyword indicating the rsync filter type via -t.
+    A script that uses rsync to perform incremental backups, or snapshots of a
+    source, -s, to a destination, -d. Default rsync flags are "aAXp". Additional
+    flags can be passed to rsync via -a. A file containing filters can be passed
+    to rsync via -f along with a keyword indicating the rsync filter type via -t.
 
 USAGE
 
@@ -25,7 +25,7 @@ USAGE
 OPTIONS
 
     -s, --src           required; the path to the dir being backed up
-    -d, --dst           required; the path to the parent of the backup dir
+    -d, --dst           required; the path to the parent of the snapshot dir
     -t, --filter-type   optional, must be passed w/ -f; the type of rsync filters
                         to apply
     -f, --filter-file   optional, must be passed w/ -t; a path to a file that
@@ -41,7 +41,7 @@ help
 
 
 SOURCE_PATH=""
-BACKUP_PARENT=""
+SNAPSHOT_PARENT=""
 FILTER_TYPE=""
 FILTER_FILE=""
 EXTRA_FLAGS=""
@@ -59,7 +59,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -d|--dest)
-      BACKUP_PARENT="${2}"
+      SNAPSHOT_PARENT="${2}"
       shift
       shift
       ;;
@@ -105,7 +105,7 @@ if [[ -z "${SOURCE_PATH}" || ! -d "${SOURCE_PATH}" ]]; then
     exit 1
 fi
 
-if [[ -z "${BACKUP_PARENT}" || ! -d "${BACKUP_PARENT}" ]]; then
+if [[ -z "${SNAPSHOT_PARENT}" || ! -d "${SNAPSHOT_PARENT}" ]]; then
     echo "-d|--dest is required and must refer to a valid directory"
     exit 1
 fi
@@ -137,8 +137,8 @@ fi
 ## construct internal script args
 
 DATETIME="$(date '+%Y-%m-%d_%H:%M:%S')"
-BACKUP_PATH="${BACKUP_PARENT}/${DATETIME}"
-LATEST_LINK="${BACKUP_PARENT}/latest"
+SNAPSHOT_PATH="${SNAPSHOT_PARENT}/${DATETIME}"
+LATEST_LINK="${SNAPSHOT_PARENT}/latest"
 # only include "--link-dest" if "latest" link exists, i.e.: if this isn't the first run
 LINK_DEST="$([[ -d "${LATEST_LINK}" ]] && echo "--link-dest=${LATEST_LINK}" || echo "")"
 
@@ -150,19 +150,19 @@ cleanup() {
     echo "Error encountered: (${1}) on ${2}"
     echo "Cleaning up..."
 
-    # remove the newest backup; it might be fine, but it's non-trivial (impossible)
-    # to really know if the error we hit means the backup is borked
-    if [[ -d "${BACKUP_PATH}" ]]; then
-        echo "Removing new, potentially incomplete/corrupt backup at ${BACKUP_PATH}"
-        rm -rf "${BACKUP_PATH}"
+    # remove the newest snapshot; it might be fine, but it's non-trivial (impossible)
+    # to really know if the error we hit means the snapshot is borked
+    if [[ -d "${SNAPSHOT_PATH}" ]]; then
+        echo "Removing new, potentially incomplete/corrupt snapshot at ${SNAPSHOT_PATH}"
+        rm -rf "${SNAPSHOT_PATH}"
     fi
 
-    # find the new latest backup to tag it as such
-    LATEST_BACKUP="${BACKUP_PARENT}/$(ls "${BACKUP_PARENT}" | grep -v latest | sort -r | head -1)"
+    # find the new latest snapshot to tag it as such
+    LATEST_SNAPSHOT="${SNAPSHOT_PARENT}/$(ls "${SNAPSHOT_PARENT}" | grep -v latest | sort -r | head -1)"
 
     # but exit if we can't find one
-    if [[ ! -d "${LATEST_BACKUP}" ]]; then
-        echo "Cannot find valid backup for latest link: ${LATEST_BACKUP} does not exist; exiting" 
+    if [[ ! -d "${LATEST_SNAPSHOT}" ]]; then
+        echo "Cannot find valid snapshot for latest link: ${LATEST_SNAPSHOT} does not exist; exiting" 
         exit 0
     fi
 
@@ -172,25 +172,25 @@ cleanup() {
         unlink "${LATEST_LINK}" 
     fi
 
-    ln -s "${LATEST_BACKUP}" "${LATEST_LINK}"
+    ln -s "${LATEST_SNAPSHOT}" "${LATEST_LINK}"
 }
 
 
 ## exec
 
-# make new backup dir
+# make new snapshot dir
 if [[ -n "${DRY_RUN}" ]]; then
-    echo "mkdir ${BACKUP_PATH}"
+    echo "mkdir ${SNAPSHOT_PATH}"
 else
-    mkdir -p "${BACKUP_PATH}"
+    mkdir -p "${SNAPSHOT_PATH}"
 fi
 
 # run rsync
 if [[ -n "${DRY_RUN}" ]]; then
-    echo "rsync ${ARGS} --delete ${LINK_DEST} ${DRY_RUN} ${FILTERS} ${SOURCE_PATH} ${BACKUP_PATH}"
+    echo "rsync ${ARGS} --delete ${LINK_DEST} ${DRY_RUN} ${FILTERS} ${SOURCE_PATH} ${SNAPSHOT_PATH}"
 fi
 
-rsync ${ARGS} --delete "${LINK_DEST}" "${DRY_RUN}" "${FILTERS}" "${SOURCE_PATH}" "${BACKUP_PATH}"
+rsync ${ARGS} --delete "${LINK_DEST}" "${DRY_RUN}" "${FILTERS}" "${SOURCE_PATH}" "${SNAPSHOT_PATH}"
 
 # unlink previous "latest" pointer, if it exists
 if [[ -n "${DRY_RUN}" ]] && [[ -d "${LATEST_LINK}" ]]; then
@@ -201,8 +201,8 @@ fi
 
 # create new "latest" pointer
 if [[ -n "${DRY_RUN}" ]]; then
-    echo "ln -s ${BACKUP_PATH} ${LATEST_LINK}"
+    echo "ln -s ${SNAPSHOT_PATH} ${LATEST_LINK}"
 else
-    ln -s "${BACKUP_PATH}" "${LATEST_LINK}"
+    ln -s "${SNAPSHOT_PATH}" "${LATEST_LINK}"
 fi
 
