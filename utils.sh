@@ -10,15 +10,15 @@ function join_by() {
     fi
 }
 
- 
+
 function md5_checksum() {
     path="${1}"
 
     if [[ ! -f "${path}" || ! -s "${path}" ]]; then
-        echo 2 
-    else 
+        echo 2
+    else
         md5sum -c --status "${path}"
         echo $?
-    fi 
+    fi
 }
 
