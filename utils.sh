@@ -12,7 +12,7 @@ function join_by() {
 
 
 function md5_checksum() {
-    path="${1}"
+    local path="${1}"
 
     if [[ ! -f "${path}" || ! -s "${path}" ]]; then
         echo 2
@@ -20,5 +20,15 @@ function md5_checksum() {
         md5sum -c --status "${path}"
         echo $?
     fi
+}
+
+
+function yes_or_no() {
+    local prompt="${1:-Are you sure?}"
+    local full_prompt="${prompt} [y/N] "
+
+    read -p "${full_prompt}" -n 1 -r
+
+    [[ $REPLY =~ ^[y]$ ]] && echo "true" || echo "false"
 }
 
