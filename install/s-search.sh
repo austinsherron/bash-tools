@@ -1,3 +1,5 @@
+# source: https://github.com/zquestz/s#install
+
 go get -v github.com/zquestz/s
 cd "${GOPATH}/src/github.com/zquestz/s"
 
