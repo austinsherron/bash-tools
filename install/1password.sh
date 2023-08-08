@@ -1,4 +1,9 @@
+#!/bin/bash
+
+set -Eeo pipefail
+
 # source: https://support.1password.com/install-linux/#debian-or-ubuntu
+
 
 # add 1password apt repo key
 curl -sS https://downloads.1password.com/linux/keys/1password.asc | sudo gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg

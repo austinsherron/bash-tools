@@ -1,4 +1,9 @@
+#!/bin/bash
+
+set -Eeo pipefail
+
 # source: https://itsfoss.com/install-chrome-ubuntu/
+
 
 PKG="google-chrome-stable_current_amd64.deb"
 

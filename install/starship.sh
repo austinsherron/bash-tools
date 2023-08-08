@@ -1,8 +1,10 @@
-# source: ??
-
 #!/usr/bin/env sh
 
 set -eu
+
+# source: ??
+
+
 printf '\n'
 
 BOLD="$(tput bold 2>/dev/null || printf '')"

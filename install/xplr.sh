@@ -1,3 +1,8 @@
+#!/bin/bash
+
+set -Eeo pipefail
+
+
 platform="linux"  # or "macos" / "linux-musl"
 
 # Download

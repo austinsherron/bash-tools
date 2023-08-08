@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# source: https://github.com/zquestz/s#install (w/ significant modifications)
-
 set -Eeo pipefail
 
 source /etc/profile.d/shared_paths.sh
+
+# source: https://github.com/zquestz/s#install (w/ significant modifications)
 
 
 VERSION="v0.6.8"

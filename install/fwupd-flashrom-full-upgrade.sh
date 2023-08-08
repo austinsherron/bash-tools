@@ -1,3 +1,8 @@
+#!/bin/bash
+
+set -Eeo pipefail
+
+
 sudo add-apt-repository ppa:starlabs/main
 sudo add-apt-repository ppa:starlabs/coreboot
 sudo add-apt-repository universe
