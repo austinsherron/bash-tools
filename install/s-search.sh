@@ -1,8 +1,27 @@
-# source: https://github.com/zquestz/s#install
+#!/bin/bash
 
-go get -v github.com/zquestz/s
-cd "${GOPATH}/src/github.com/zquestz/s"
+# source: https://github.com/zquestz/s#install (w/ significant modifications)
 
-make
-make install
+set -Eeo pipefail
+
+source /etc/profile.d/shared_paths.sh
+
+
+VERSION="v0.6.8"
+PKG="github.com/zquestz/s"
+DST="${EXTERNAL_PKGS}/s-search"
+BIN="${DST}/s"
+
+# clone repo
+[[ -d "${DST}" ]] || git clone "https://${PKG}" "${DST}"
+
+# build
+cd "${DST}"
+[[ -f "${BIN}" ]] || make
+
+# install
+sudo mv "${BIN}" "${SHARED_BINS}"
+
+# "clean up"
+cd -
 
