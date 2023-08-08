@@ -2,15 +2,28 @@
 
 set -Eeo pipefail
 
+source /etc/profile.d/shared_paths.sh
 
-platform="linux"  # or "macos" / "linux-musl"
 
-# Download
-wget https://github.com/sayanarijit/xplr/releases/latest/download/xplr-$platform.tar.gz
+PLATFORM="linux"  # one of ["linux"|"linux-musl"|"macos"]
+PKG="xplr-${PLATFORM}.tar.gz"
+OUT="xplr-${PLATFORM}"
 
-# Extract
-tar xzvf xplr-$platform.tar.gz
+# download package if it doesn't already exist
+[[ -f "${PKG}" ]] || wget "https://github.com/sayanarijit/xplr/releases/latest/download/${PKG}"
+# create output dir if it doesn't already exist
+[[ -d "${OUT}" ]] || mkdir "${OUT}"
+# extract
+[[ -f "${OUT}/xplr" ]] || tar -xzvf "${PKG}" -C "${OUT}"
 
-# Place in $PATH
-sudo mv xplr /usr/local/bin/
+# validate extracts
+if [[ ! -f "${OUT}/xplr" ]]; then
+    echo "No 'xplr' binary found in pkg extracts; unrecoverable error"
+    exit 1
+fi
+
+# install (i.e.: mv to path dir)
+sudo mv "${OUT}/xplr" "${SHARED_BINS}"
+# clean up
+rm -rf "${OUT}" "${PKG}"
 
