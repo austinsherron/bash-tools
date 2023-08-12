@@ -51,7 +51,7 @@ help
 }
 
 
-DEFAULT_CONFIG="~/.config/snapshot/config.yaml"
+DEFAULT_CONFIG="${HOME}/.config/snapshot/config.yaml"
 FALLBACK_CONFIG="/usr/local/etc/snapshot/config.yaml"
 
 CONFIG=""
@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
       help
       exit 0
       ;;
-    *|-*|--*)
+    *)
       usage
       exit 1
       ;;

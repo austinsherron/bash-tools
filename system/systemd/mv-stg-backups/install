@@ -5,6 +5,8 @@
 set -Eeuo pipefail
 
 
+# make systemd dir, if necessary
+mkdir -p /usr/local/systemd/
 # install runnable
 cp ${TOOLS_ROOT}/system/systemd/mv-stg-backups/mv-stg-backups /usr/local/systemd/
 # install systemd user units

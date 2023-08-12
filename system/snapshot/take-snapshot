@@ -14,7 +14,7 @@ cat <<help
 DESCRIPTION
 
     A script that uses rsync to perform incremental backups, or snapshots of a
-    source, -s, to a destination, -d. Default rsync flags are "aAXp". Additional
+    source, -s, to a destination, -d. Default rsync flags are "aAX". Additional
     flags can be passed to rsync via -a. A file containing filters can be passed
     to rsync via -f along with a keyword indicating the rsync filter type via -t.
 
@@ -33,7 +33,7 @@ OPTIONS
     -a, --flags         optional; additional rsync flags
     -e, --extra         optional; anything extra to add to the rsync command, after 
                         flags
-    --dry-run           optional; indicates that the script should print hypotheical
+    --dry-run           optional; indicates that the script should print hypothetical
                         results to the console, but make no state changes
     -h, --help          display this message
 help
@@ -49,7 +49,7 @@ EXTRA=""
 DRY_RUN=""
 
 FILTERS=""
-ARGS="-aAXp"
+ARGS="-aAX"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -91,7 +91,7 @@ while [[ $# -gt 0 ]]; do
       help
       exit 0
       ;;
-    *|-*|--*)
+    *)
       usage
       exit 1
       ;;
@@ -190,7 +190,7 @@ if [[ -n "${DRY_RUN}" ]]; then
     echo "rsync ${ARGS} --delete ${LINK_DEST} ${DRY_RUN} ${FILTERS} ${SOURCE_PATH} ${SNAPSHOT_PATH}"
 fi
 
-rsync ${ARGS} --delete "${LINK_DEST}" "${DRY_RUN}" "${FILTERS}" "${SOURCE_PATH}" "${SNAPSHOT_PATH}"
+rsync ${ARGS} --delete ${LINK_DEST} ${DRY_RUN} "${FILTERS}" "${SOURCE_PATH}" "${SNAPSHOT_PATH}"
 
 # unlink previous "latest" pointer, if it exists
 if [[ -n "${DRY_RUN}" ]] && [[ -d "${LATEST_LINK}" ]]; then
