@@ -1,0 +1,286 @@
+#!/bin/bash
+
+set -Eeuo pipefail
+
+source "${CODE_ROOT}/lib/bash/utils.sh"
+
+
+USAGE="usage: update-crontab -s -c [-u] [-q] [-d] [-m|--strict] [-v]"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+
+DESCRIPTION
+
+    Modifies or queries an arbitrary user's crontab. The script has the following 
+    behavioral modifiers:
+
+    * Add (+a) - the default behavior; if no crontab entry is found w/ matching schedule and command, write it, otherwise exit w/ rc = 0 
+    * Delete (+d,-a) - if a crontab entry is found w/ matching schedule/command, delete it, otherwise exit w/ rc = 0
+    * Modify + Add (+m,+a) - if crontab entries are found w/ only a matching command, modify the existing partial matches
+    * Modify + Delete; if crontab entries are found w/ only a matching command, delete the existing partial matches
+    * Query (-a,-d,-m) - query for existing matches; rc = 0 means an exact match was found, rc 1 indicates no matches were found; rc = 2 indicates one or more partial 
+      matches were found; if specified, all CUD modifiers (+a,+d,+m) are ignored in query mode
+    * Strict (+s) - disallows modifications of partial matches and causes the script to exit w/ non-zero return codes if there are no modifications to be made to the 
+      crontab based on a call's args; rc = 1 indicates that a crontab addition or deletion was requested, but that the entry already exists or doesn't exist, respectively;
+      rc = 2 indicates a partial match was found and no action can be taken
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -s, --schedule      the cron schedule string
+    -c, --cmd           the cmd to run
+    -u, --user          optional; defaults to the current user; the user whose crontab should be written/queried
+    -q, --query         optional; if present, the script will query for a matching crontab entry; return code 0 indicates the entry is already present, return code 1 
+                        indicates it's not, and return code 2 indicates that an entry w/ the provided command is present, but the entry's schedule is different
+    -m, --modify        optional; mutually exclusive w/ --strict; if present, the script will modify an entry's schedule if an entry w/ a matching cmd is found
+    -d, --delete        optional; if present, the script will delete an entry if a full match found, and will delete an entry if a cmd match is found and -m is specified
+    --strict            optional; mutually exclusive w/ -m; if present, instead of ignoring or updating a matching entry, the script will fail w/ a return code of 1 if an 
+                        existing entry matches entirely, or 2 if an entry's cmd matches
+    -v, --verbose       optional; if present, the script will print to stdout messages about the script's progress
+    -h, --help          display this message
+help
+}
+
+SCHEDULE=""
+CMD=""
+FOR_USER="${USERNAME}"
+QUERY=""
+MODIFY=""
+DELETE=""
+STRICT=""
+VERBOSE=""
+
+CRONTAB_CONTENT=""
+CRONTAB_LINE=""
+
+ADD_MODE="+a"
+MODIFY_MODE=""
+DELETE_MODE=""
+STRICTNESS=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -s|--schedule)
+      SCHEDULE="${2}"
+      shift
+      shift
+      ;;
+    -c|--cmd)
+      CMD="${2}"
+      shift
+      shift
+      ;;
+    -u|--user)
+      FOR_USER="${2}"
+      shift
+      shift
+      ;;
+    -q|--query)
+      QUERY="true"
+      shift
+      ;;
+    -m|--modify)
+      MODIFY="true"
+      shift
+      ;;
+    -d|--delete)
+      DELETE="true"
+      shift
+      ;;
+    --strict)
+      STRICT="true"
+      shift
+      ;;
+    -v|--verbose)
+      VERBOSE="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+
+set_modes() {
+    # order of cases/use of separate if blocks is important here
+    if [[ "${DELETE}" == "true" ]]; then
+        DELETE_MODE="+d"
+        ADD_MODE="-a"
+    fi
+
+    if [[ "${STRICT}" == "true" ]]; then
+        STRICTNESS="+s"
+        MODIFY_MODE="-m"
+    elif [[ "${MODIFY}" == "true" ]]; then
+        MODIFY_MODE="+m"
+    fi
+
+    if [[ "${QUERY}" == "true" ]]; then
+        ADD_MODE="-a"
+        MODIFY_MODE="-m"
+        DELETE_MODE="-d"
+    fi
+}
+
+get_modes_str() {
+    local modes=("${ADD_MODE}" "${MODIFY_MODE}" "${DELETE_MODE}" "${STRICTNESS}")
+    local non_empty_modes=()
+
+    for mode in "${modes[@]}"; do
+        if [[ -n "${mode}" ]]; then
+            non_empty_modes+=("${mode}")
+        fi
+    done
+
+    modes_str="$(join_by "," "${non_empty_modes[@]}")"
+    echo "[${modes_str}]"
+}
+
+log() {
+    local msg="${1}"
+    local level="${2:-"INFO"}"
+    local force="${3:-"false"}"
+    local suppress_modes="${4:-"false"}"
+
+    local modes_str
+    modes_str="$([[ "${suppress_modes}" != "true" ]] && get_modes_str || echo "")"
+    modes_str="$([[ -n "${modes_str}" ]] && echo " (Modes=${modes_str})" || echo "")"
+
+    [[ "${VERBOSE}" == "true" || "${force}" == "true" ]] && echo "[${level}] ${msg}${modes_str}"
+    return 0
+}
+
+handle_no_match_write() {
+    log "Writing new crontab entry"
+
+    if [[ "${FOR_USER}" == "${USER}" ]]; then
+        (echo "${CRONTAB_CONTENT}"; echo "${CRONTAB_LINE}") | crontab -u "${FOR_USER}" -
+    else
+        (echo "${CRONTAB_CONTENT}"; echo "${CRONTAB_LINE}") | sudo crontab -u "${FOR_USER}" -
+    fi
+
+    exit 0
+}
+
+handle_cmd_match_write() {
+    log "Writing modified entry to crontab"
+
+    if [[ "${FOR_USER}" == "${USER}" ]]; then
+        (echo "${CRONTAB_CONTENT}" | grep -F -v "${CMD}"; echo "${CRONTAB_LINE}") | crontab -u "${FOR_USER}" -
+    else
+        (echo "${CRONTAB_CONTENT}" | grep -F -v "${CMD}"; echo "${CRONTAB_LINE}") | sudo crontab -u "${FOR_USER}" -
+    fi
+
+    exit 0
+}
+
+handle_cmd_match_delete() {
+    log "Command match found: removing entry"
+
+    if [[ "${FOR_USER}" == "${USER}" ]]; then
+        (echo "${CRONTAB_CONTENT}" | grep -F -v "${CMD}") | crontab -u "${FOR_USER}" -
+    else
+        (echo "${CRONTAB_CONTENT}" | grep -F -v "${CMD}") | sudo crontab -u "${FOR_USER}" -
+    fi
+
+    exit 0
+}
+
+handle_full_match_delete() {
+    log "Full match found: removing entry"
+
+    if [[ "${FOR_USER}" == "${USER}" ]]; then
+        (echo "${CRONTAB_CONTENT}" | grep -F -v "${CRONTAB_LINE}") | crontab -u "${FOR_USER}" -
+    else
+        (echo "${CRONTAB_CONTENT}" | grep -F -v "${CRONTAB_LINE}") | sudo crontab -u "${FOR_USER}" -
+    fi
+
+    exit 0
+}
+
+handle_nothing_to_do() {
+    local log_level="$([[ "${STRICT}" == "true" ]] && echo "WARN" || echo "INFO")"
+
+    log "Nothing to do: exiting" "${log_level}"
+
+    [[ "${STRICT}" == "true" ]] && exit 1 || exit 0
+}
+
+
+if [[ -z "${SCHEDULE}" ]]; then
+    log "-s|--schedule is required" "ERROR" "true" "true"
+    exit 1
+fi
+
+if [[ -z "${CMD}" ]]; then
+    log "-c|--cmd is required" "ERROR" "true" "true"
+    exit 1
+fi
+
+if [[ "${MODIFY}" == "true" ]] && [[ "${STRICT}" == "true" ]]; then
+    log "-m|--modify and --strict are mutually exclusive" "ERROR" "true" "true"
+    exit 1
+fi
+
+if [[ "${MODIFY}" == "true" ||  "${DELETE}" == "true" ||  "${STRICT}" == "true"  ]] && [[ "${QUERY}" == "true" ]]; then
+    log "-q|--query = true: [-m|--modify, -d|--delete, --strict] ignored" "WARN" "true"
+fi
+
+set_modes
+log "Running w/ modifiers=$(get_modes_str)" "INFO" "false" "true"
+
+CRONTAB_LINE="${SCHEDULE} ${CMD}"
+log "Using crontab line \"${CRONTAB_LINE}\""
+
+log "Reading crontab content"
+[[ "${FOR_USER}" != "${USER}" ]] && log "-u|--user != ${USER}; credential check required >>>" 
+
+CRONTAB_CONTENT="$([[ "${FOR_USER}" == "root" ]] && sudo crontab -u "${FOR_USER}" -l || crontab -u "${FOR_USER}" -l)"
+
+FULL_MATCH="$(echo "${CRONTAB_CONTENT}" | grep -F -q "${CRONTAB_LINE}" && echo 'true' || echo 'false')"
+CMD_MATCH="$(echo "${CRONTAB_CONTENT}" | grep -F -q "${CMD}" && echo 'true' || echo 'false')"
+
+FULL_MATCH_LINE="$(echo "${CRONTAB_CONTENT}" | grep -F "${CRONTAB_LINE}" || echo -n "")"
+CMD_MATCH_LINE="$(echo "${CRONTAB_CONTENT}" | grep -F "${CMD}" || echo -n "")"
+
+if [[ "${FULL_MATCH}" == "true" ]]; then
+    log "Full match found"
+    log "Match line=\"${FULL_MATCH_LINE}\""
+
+    [[ "${QUERY}" == "true" ]] && log "Query only; exiting" && exit 0
+    [[ "${DELETE}" == "true" ]] && handle_full_match_delete
+
+    handle_nothing_to_do
+elif [[ "${CMD_MATCH}" == "true" ]]; then
+    log "Cmd match found"
+    log "Match line=\"${CMD_MATCH_LINE}\""
+
+    [[ "${QUERY}" == "true" ]] && log "Query only; exiting" && exit 2
+    [[ "${STRICT}" == "true" ]] && log "Nothing to do: exiting" "WARN" && exit 2
+    [[ "${MODIFY}" != "true" ]] && handle_nothing_to_do
+    [[ "${DELETE}" == "true" ]] && handle_cmd_match_delete
+
+    handle_cmd_match_write
+else
+    log "No match found"
+
+    [[ "${QUERY}" == "true" ]] && log "Query only; exiting" && exit 1
+    [[ "${DELETE}" == "true" ]] && handle_nothing_to_do
+
+    handle_no_match_write
+fi
+

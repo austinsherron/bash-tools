@@ -5,23 +5,27 @@ set -Eeuo pipefail
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="usage: lua-path -d {-d} [-e] [-p] [-a] [-s] [-v] [-h]"
+USAGE="usage: lua-path -d {-d} [-e] [-p] [-a] [-s] [-v]"
 
 usage() {
-    echo "usage: ${USAGE}"
+    echo "${USAGE}"
 }
 
 help() {
 cat <<help
-${USAGE}
+DESCRIPTION
 
-Discover, display, and optionally export to "LUA_PATH" lua code sources found in search 
-directories provided via -d. By default, this script considers any directory named
-"lua" as containing lua source.
+    Discover, display, and write to stdout in format expected for "LUA_PATH" lua code 
+    sources found in search directories provided via -d. By default, this script considers
+    any directory named "lua" as containing lua source.
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
 
     -d, --dir       multi-valued; directories in which to search for lua sources
-    -e, --export    optional; if present, indicates that the script should export
-                    "LUA_PATH" instead of just printing its value to stdout
     -p, --pattern   optional, defaults to "lua"; the name pattern that identifies lua 
                     sources
     -a, --args      optional; args passed to the find command that searches for lua 
@@ -31,13 +35,13 @@ directories provided via -d. By default, this script considers any directory nam
     -v, --verbose   optional; if present, the script will print to stdout the paths of 
                     discovered lua sources
     -h, --help      display this message
+
 help
 }
 
 
 DIRS=()
 VALID_DIRS=()
-EXPORT=""
 PATTERN="lua"
 ARGS="-maxdepth 4 -type d"
 STRICT=""
@@ -48,10 +52,6 @@ while [[ $# -gt 0 ]]; do
     -d|--dir)
       DIRS+=("${2}")
       shift
-      shift
-      ;;
-    -e|--export)
-      EXPORT="true"
       shift
       ;;
     -p|--pattern)
@@ -117,12 +117,6 @@ for path in "${LUA_DIRS[@]}"; do
     LUA_PATHS+=("${LUA_INIT_PATH}")
 done
 
-if [[ "${EXPORT}" != "true" ]]; then
-    exit 0
-fi
-
 LUA_PATH="$(join_by ";" "${LUA_PATHS[@]}")"
-export LUA_PATH
-
-[[ "${VERBOSE}" = "true" ]] && echo "LUA_PATH exported"
+echo "${LUA_PATH}"
 
