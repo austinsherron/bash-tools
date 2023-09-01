@@ -11,6 +11,11 @@ function join_by() {
 }
 
 
+function split() {
+    local str="${1}" d="${2}"
+}
+
+
 function md5_checksum() {
     local path="${1}"
 
@@ -20,6 +25,26 @@ function md5_checksum() {
         md5sum -c --status "${path}"
         echo $?
     fi
+}
+
+
+function to_lower() {
+    local str="${1}"
+    echo "${str}" |  tr '[:upper:]' '[:lower:]'
+}
+
+
+function to_upper() {
+    local str="${1}"
+    echo "${str}" |  tr '[:lower:]' '[:upper:]'
+}
+
+
+function endswith() {
+    local str="${1}"
+    local sfx="${2}"
+
+    [[ "${str}" == *"${sfx}" ]] && echo "true"
 }
 
 
