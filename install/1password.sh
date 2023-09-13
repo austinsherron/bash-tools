@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -Eeo pipefail
+set -Eeuo pipefail
 
 # source: https://support.1password.com/install-linux/#debian-or-ubuntu
 
