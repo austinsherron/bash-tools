@@ -5,6 +5,14 @@ set -Eeuo pipefail
 # source: https://signal.org/download/linux/
 
 
+# 0. Check if already installed (added by me, Austin)
+if [[ "$(which signal-desktop)" ]]; then
+    # cleanup may still be necessary
+    rm -f signal-desktop-keyring.gpg
+    echo "signal is already installed; exiting"
+    exit 0
+fi
+
 # NOTE: These instructions only work for 64-bit Debian-based
 # Linux distributions such as Ubuntu, Mint etc.
 
@@ -18,4 +26,7 @@ echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/signal-desktop-keyring.gpg] 
 
 # 3. Update your package database and install Signal:
 sudo apt update && sudo apt install signal-desktop
+
+# 4. Cleanup (added by me, Austin)
+rm -f signal-desktop-keyring.gpg
 
