@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -Eeo pipefail
+set -Eeuo pipefail
 
 # source: https://itsfoss.com/install-chrome-ubuntu/
 

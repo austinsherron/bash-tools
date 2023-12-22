@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -Eeo pipefail
+set -Eeuo pipefail
 
 
 curl -R -O http://www.lua.org/ftp/lua-5.3.5.tar.gz

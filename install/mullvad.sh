@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -Eeo pipefail
+set -Eeuo pipefail
 
 
 VERSION="2023.4"

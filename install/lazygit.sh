@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -Eeo pipefail
+set -Eeuo pipefail
 
 # source: https://github.com/jesseduffield/lazygit#installation
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -Eeo pipefail
+set -Eeuo pipefail
 
 
 sudo apt update && sudo apt install -y wget gnupg lsb-release apt-transport-https ca-certificates

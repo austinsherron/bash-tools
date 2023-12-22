@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -Eeo pipefail
+set -Eeuo pipefail
 
 # source: https://guake.readthedocs.io/en/latest/user/installing.html#system-wide-installation
 

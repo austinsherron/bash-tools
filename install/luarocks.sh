@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -Eeo pipefail
+set -Eeuo pipefail
 
 
 wget https://luarocks.org/releases/luarocks-3.9.2.tar.gz
