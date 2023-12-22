@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # source: https://bisq.network/getting-started/
 
 
-VERSION="1.9.12"
+VERSION="1.9.14"
 BASE_URL="https://bisq.network/downloads/v${VERSION}"
 APP="bisq"
 OUT="${HOME}/Downloads/${APP}"
