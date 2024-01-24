@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 << description
 This is a util script that wraps "trash-cli", a collection of utilities used to
