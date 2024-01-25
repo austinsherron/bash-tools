@@ -44,6 +44,7 @@ OPTIONS
     -v, --verbose     optional; send the qr image path, as well as the data embedded in
                       the image, to stdout
     -h, --help        print this message
+
 help
 }
 
@@ -105,7 +106,7 @@ while [[ $# -gt 0 ]]; do
       help
       exit 0
       ;;
-    *|-*|--*)
+    *)
       usage
       exit 1
       ;;
