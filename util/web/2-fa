@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -Eeuo pipefail
 
 
 USAGE="2-fa [-v] [-c path] [-m path] 2FA_SOURCE_KEY"
@@ -32,7 +32,7 @@ USAGE
     ${USAGE}
 
 POSITIONAL ARGUMENTS
-    
+
     2FA_SOURCE      a key that maps to a configured 2-FA source
 
 OPTIONS
@@ -42,11 +42,12 @@ OPTIONS
     -v, --verbose   when specified, the token will be sent to stdout as well as 
                     to the clipboard
     -h, --help      print this message
+
 help
 }
 
 
-VERBOSE="false"
+VERBOSE=""
 
 CONFIG_PATH="${HOME}/.config/2-fa"
 MSG_PATH=""
@@ -85,7 +86,7 @@ while [[ $# -gt 0 ]]; do
       help
       exit 0
       ;;
-    -*|--*)
+    -*)
       usage
       exit 1
       ;;
@@ -101,7 +102,7 @@ if [[ -z "${TWO_FA_SRC}" ]]; then
     exit 1
 fi 
 
-MSG_CONTENT="$([[ -n "${MSG_PATH}" && -s "${MSG_PATH}" ]] && cat "${MSG_PATH}" || pbpaste)"
+MSG_CONTENT="$([[ -n "${MSG_PATH}" && -s "${MSG_PATH}" ]] && cat "${MSG_PATH}" || xsel --clipboard)"
 
 if [[ -z "${MSG_CONTENT}" ]]; then
     SRC_MOD="$([[ -n "${MSG_PATH}" ]] && echo "${MSG_PATH} doesn't exist/is empty and " || echo "")"
@@ -118,6 +119,6 @@ fi
 
 TOKEN="$(get-2fa-token)"
 
-[[ "${VERBOSE}" = "true" ]] && echo "${TOKEN}"
-echo "${TOKEN}" | pbcopy
+[[ "${VERBOSE}" == "true" ]] && echo "${TOKEN}"
+echo "${TOKEN}" | xsel --clipboard
 
