@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -Eeuo pipefail
 
 
 mv /home/austin/Downloads/librewolf-stg-backups/* /home/austin/Backups/Browsers/librewolf/simple-tab-groups
