@@ -5,7 +5,7 @@ set -Eeuo pipefail
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="usage: update-crontab -s -c [-u] [-q] [-d] [-m|--strict] [-v]"
+USAGE="usage: crontabctl -s -c [-u] [-q] [-d] [-m|--strict] [-v]"
 
 usage() {
     echo "${USAGE}"
@@ -16,8 +16,7 @@ cat <<help
 
 DESCRIPTION
 
-    Modifies or queries an arbitrary user's crontab. The script has the following 
-    behavioral modifiers:
+    Modifies or queries an arbitrary user's crontab. The script has the following behavioral modifiers:
 
     * Add (+a) - the default behavior; if no crontab entry is found w/ matching schedule and command, write it, otherwise exit w/ rc = 0 
     * Delete (+d,-a) - if a crontab entry is found w/ matching schedule/command, delete it, otherwise exit w/ rc = 0
@@ -46,6 +45,7 @@ OPTIONS
                         existing entry matches entirely, or 2 if an entry's cmd matches
     -v, --verbose       optional; if present, the script will print to stdout messages about the script's progress
     -h, --help          display this message
+
 help
 }
 
@@ -221,12 +221,12 @@ handle_nothing_to_do() {
 }
 
 
-if [[ -z "${SCHEDULE}" ]]; then
+if [[ -z "${SCHEDULE}" && "${QUERY}" != "true" ]]; then
     log "-s|--schedule is required" "ERROR" "true" "true"
     exit 1
 fi
 
-if [[ -z "${CMD}" ]]; then
+if [[ -z "${CMD}" && "${QUERY}" != "true" ]]; then
     log "-c|--cmd is required" "ERROR" "true" "true"
     exit 1
 fi
@@ -243,13 +243,24 @@ fi
 set_modes
 log "Running w/ modifiers=$(get_modes_str)" "INFO" "false" "true"
 
-CRONTAB_LINE="${SCHEDULE} ${CMD}"
-log "Using crontab line \"${CRONTAB_LINE}\""
+CRONTAB_LINE=""
+
+if [[ -n "${SCHEDULE}" && -n "${CMD}" ]]; then
+    CRONTAB_LINE="${SCHEDULE} ${CMD}"
+    log "Using crontab line \"${CRONTAB_LINE}\""
+else
+    log "-s|--schedule, -c|--cmd not present; querying for all crontab entries"
+fi
 
 log "Reading crontab content"
 [[ "${FOR_USER}" != "${USER}" ]] && log "-u|--user != ${USER}; credential check required >>>" 
 
 CRONTAB_CONTENT="$([[ "${FOR_USER}" == "root" ]] && sudo crontab -u "${FOR_USER}" -l || crontab -u "${FOR_USER}" -l)"
+
+if [[ -z "${CRONTAB_LINE}" ]]; then
+    echo "${CRONTAB_CONTENT}"
+    exit 0
+fi
 
 FULL_MATCH="$(echo "${CRONTAB_CONTENT}" | grep -F -q "${CRONTAB_LINE}" && echo 'true' || echo 'false')"
 CMD_MATCH="$(echo "${CRONTAB_CONTENT}" | grep -F -q "${CMD}" && echo 'true' || echo 'false')"
