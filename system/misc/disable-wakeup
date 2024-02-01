@@ -1,0 +1,97 @@
+#!/bin/bash
+
+set -Eeuo pipefail
+
+
+#
+# NOTE: must be run w/ sudo
+USAGE="usage: disable-wakeup [-p path] {-d device}"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+
+DESCRIPTION
+
+    Disables waking up the computer w/ external devices, i.e.: keyboard, mouse, etc. More specifically, this script has the following default behavior:
+
+        * Disables all enabled devices in /proc/acpi/wakeup
+
+    Note: must be run w/ sudo or by a privileged user.
+
+    Source: https://askubuntu.com/questions/848698/wake-up-from-suspend-using-wireless-usb-keyboard-or-mouse-for-any-linux-distro
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -d, --device        optional, multi-valued, defaults to (XHCI, PWRB, SLPB, LID0); the devices in /proc/acpi/wakeup for which to disable wakeup
+    --dry-run           optional; if present, no state changes will be made
+    -v, --verbose       optional; if present, the script will print to stdout messages about the script's progress
+    -h, --help          display this message
+help
+}
+
+
+declare -A WAKEUP_DEVICES=()
+DRY_RUN=""
+VERBOSE=""
+
+log() {
+    [[ "${VERBOSE}" == "true" ]] && echo "[INFO] ${1}"
+}
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -d|--device)
+      WAKEUP_DEVICES[${2}]="true"
+      shift
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    -v|--verbose)
+      VERBOSE="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+
+ENABLED="$(grep "\*enabled" /proc/acpi/wakeup || echo "")"
+ENABLED="$(echo "${ENABLED}" | cut -f 1)"
+
+if [[ -z "${ENABLED}" ]]; then
+    log "no enabled devices found"
+    exit 0
+fi
+
+ENABLED_STR="$(echo "${ENABLED}" | tr '\n' ', ')"
+ENABLED_STR="${ENABLED_STR:0:-2}"
+log "found enabled devices=${ENABLED_STR}"
+
+echo "${ENABLED}" | cut -f 1 | 
+    while read -r device; do
+        if [[ "${#WAKEUP_DEVICES[@]}" -eq 0 ]] || [[ -n "${WAKEUP_DEVICES[$device]+x}" ]]; then
+            log "disabling device=${device}"
+            [[ -z "${DRY_RUN}" ]] && echo "${device}" > /proc/acpi/wakeup
+        else
+            log "${device} not specified via -d|--device; skipping"
+        fi
+    done
+

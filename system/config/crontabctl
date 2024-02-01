@@ -45,7 +45,6 @@ OPTIONS
                         existing entry matches entirely, or 2 if an entry's cmd matches
     -v, --verbose       optional; if present, the script will print to stdout messages about the script's progress
     -h, --help          display this message
-
 help
 }
 

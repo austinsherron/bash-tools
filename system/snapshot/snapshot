@@ -46,7 +46,6 @@ OPTIONS
     --dry-run       optional; indicates that the script should print hypotheical
                     results to the console, but make no state changes
     -h, --help      display this message
-
 help
 }
 

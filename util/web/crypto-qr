@@ -44,7 +44,6 @@ OPTIONS
     -v, --verbose     optional; send the qr image path, as well as the data embedded in
                       the image, to stdout
     -h, --help        print this message
-
 help
 }
 
