@@ -77,13 +77,9 @@ while [[ $# -gt 0 ]]; do
       help
       exit 0
       ;;
-    -*)
+     *)
       usage
       exit 1
-      ;;
-     *)
-      TWO_FA_SRC="${1}"
-      shift
       ;;
   esac
 done
@@ -112,6 +108,7 @@ fi
 
 if [[ ! -d "${USER_COMPLETION_DIR}" ]]; then
     echo "[ERROR] completion dir is not a valid directory (path='${USER_COMPLETION_DIR}')"
+    exit 1
 fi
 
 DST_PATH="${USER_COMPLETION_DIR}/$(basename "${COMPLETION_FILE}")"
