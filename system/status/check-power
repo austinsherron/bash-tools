@@ -1,0 +1,113 @@
+#!/bin/bash
+
+set -Eeuo pipefail
+
+
+USAGE="usage: check-power [-s status] [-m mechanism]"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+
+DESCRIPTION
+
+    Reports whether the laptop is plugged in or is using battery power. The expected status can be set using -s, and the reporting mechanism can be specified using -m. 
+
+    Statuses include:
+
+        * ac - indicates the laptop is expected to be plugged in and using ac power
+        * battery - indicates the laptop is expected to be using battery power
+
+    Mechanisms include:
+
+        * rc - used w/ -s; status is reported via script return code, where rc=0 indicates that the actual and expected statuses match, and rc=1 indicates they don't
+        * boolean - used w/ -s; status is reported via a boolean string, where "true" indicates that the actual and expected statuses match, and "false" indicates they don't
+        * enum - used w/o -s; status is reported via "enum" strings, where "ac" indicateds AC power, and "battery" indicates battery power
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -s, --status        optional, valid values are "ac" and "battery"; specifies the expected status; must be used if -m is either "rc" or "boolean"
+    -m, --mechansim     optional, defaults to "rc" if -s is used, or "enum" if it's not; valid values are "rc", "boolean", and "enum"; specifies the reporting mechanism; 
+                        -s must be specified if -m is  either "rc" or "boolean"
+    -h, --help          display this message
+help
+}
+
+
+declare -A WHAT=(
+    ["ac"]="1" 
+    ["battery"]="0" 
+)
+
+declare -A HOW=(
+    ["rc"]="rc" 
+    ["boolean"]="boolean" 
+    ["enum"]="enum"
+)
+
+STATUS=""
+MECHANISM=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -s|--status)
+      STATUS="$([[ -z "${2+x}" ]] && echo "" || echo "${2}")"
+      shift
+      shift
+      ;;
+    -m|--mechanism)
+      MECHANISM="$([[ -z "${2+x}" ]] && echo "" || echo "${2}")"
+      shift
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -n "${STATUS}" ]] && [[ -z "${WHAT[${STATUS}]+x}" ]]; then
+    echo "[ERROR] -s|--status must be one of {${!WHAT[*]}}, not \"${STATUS}\""
+    exit 1
+fi
+
+if [[ -n "${MECHANISM}" ]] && [[ -z "${HOW[${MECHANISM}]+x}" ]]; then
+    echo "[ERROR] -m|--mechanism must be one of {${!HOW[*]}}, not \"${MECHANISM}\""
+    exit 1
+fi
+
+if [[ -n "${STATUS}" ]] && [[ "${MECHANISM}" == "enum" ]]; then
+    echo "[ERROR] -s|--status cannot be used w/ -m enum"
+    exit 1
+fi
+
+if [[ -z "${MECHANISM}" ]]; then
+    MECHANISM="$([[ -z "${STATUS}" ]] && echo "enum" || echo "rc")"
+fi
+
+POWER="$(cat /sys/class/power_supply/AC/online)"
+
+case "${MECHANISM}" in
+  enum)
+    [[ "${POWER}" == "1" ]] && echo "ac" || echo "battery"
+    ;;
+  boolean)
+    [[ "${POWER}" == "${WHAT[${STATUS}]}" ]] && echo "true" || echo "false"
+    ;;
+  rc)
+    [[ "${POWER}" == "${WHAT[${STATUS}]}" ]] && exit 0 || exit 1
+    ;;
+esac
+

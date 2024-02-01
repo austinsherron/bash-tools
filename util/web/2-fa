@@ -42,7 +42,6 @@ OPTIONS
     -v, --verbose   when specified, the token will be sent to stdout as well as 
                     to the clipboard
     -h, --help      print this message
-
 help
 }
 

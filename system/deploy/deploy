@@ -32,7 +32,6 @@ OPTIONS
     -d, --dry-run       optional; simulate changes based on provided args but make no file system changes
     -v, --verbose       optional, -v N, N=0..5, defaults to 0; logs progress/status msgs to stderr; higher N means more verbosity
     -h, --help          optional; display this message
-
 help
 }
 

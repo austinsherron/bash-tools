@@ -30,7 +30,6 @@ OPTIONS
     -s, --strict    optional; if present, the script will fail if any single provided search dir is invalid (i.e.: doesn't exist)
     -v, --verbose   optional; if present, the script will print to stdout the paths of discovered lua sources
     -h, --help      display this message
-
 help
 }
 

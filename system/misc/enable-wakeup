@@ -1,0 +1,94 @@
+#!/bin/bash
+
+set -euo pipefail
+
+
+USAGE="usage: enable-wakeup [-p path] {-d device}"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+
+DESCRIPTION
+
+    Enables waking up the computer w/ external devices, i.e.: keyboard, mouse, etc. More specifically, this script has the following default behavior:
+
+        * Adds "enabled" to all files in /sys/bus/usb/devices/*/power/wakeup
+        * Enables the following devices in /proc/acpi/wakeup: XHCI, PWRB, SLPB, LID0
+
+    Callers can override the usb devices path via -p|--path and the wakeup devices via -d|--device.
+
+    Note: must be run w/ sudo or by a privileged user.
+
+    Source: https://askubuntu.com/questions/848698/wake-up-from-suspend-using-wireless-usb-keyboard-or-mouse-for-any-linux-distro
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -p, --path          optional, defaults to /sys/bus/usb/devices/*/power/wakeup; the path that determines for which usb devices wakeup is enabled
+    -d, --device        optional, multi-valued, defaults to (XHCI, PWRB, SLPB, LID0); the devices in /proc/acpi/wakeup for which to enabled wakeup
+    -v, --verbose       optional; if present, the script will print to stdout messages about the script's progress
+    -h, --help          display this message
+help
+}
+
+
+USB_PATH="/sys/bus/usb/devices/*/power/wakeup" 
+DEFAULT_DEVICES=("XHCI" "PWRB" "SLPB" "LID0")
+WAKEUP_DEVICES=()
+DRY_RUN=""
+VERBOSE=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -p|--path)
+      USB_PATH="${2}"
+      shift
+      shift
+      ;;
+    -d|--device)
+      WAKEUP_DEVICES+=("${2}")
+      shift
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    -v|--verbose)
+      VERBOSE="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+
+if [[ "${#WAKEUP_DEVICES[@]}" -eq 0 ]]; then
+    WAKEUP_DEVICES+=("${DEFAULT_DEVICES[@]}")
+fi
+
+[[ "${VERBOSE}" == "true" ]] && echo "[INFO] enabling usb devices in path=${USB_PATH}"
+echo "enabled" | sudo tee ${USB_PATH}
+
+for device in "${WAKEUP_DEVICES[@]}"; do
+    # only enable if disabled, as this actually toggles the value
+    if grep "${device}" /proc/acpi/wakeup | grep -q disabled; then
+        [[ "${VERBOSE}" == "true" ]] && echo "[INFO] enabling device=${device}"
+        [[ -z "${DRY_RUN}" ]] && echo "${device}" > /proc/acpi/wakeup
+    fi
+done
+

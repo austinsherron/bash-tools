@@ -1,0 +1,128 @@
+#!/bin/bash
+
+set -Eeuo pipefail
+
+
+USAGE="usage: check-monitors [-c] [-e [-m mechanism rc|boolean]]"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+
+DESCRIPTION
+
+    Reports on the status of connected monitors, both builtin and external. Reportable information includes monitor names to stdout (no args), monitor count (-c), or
+    whether external monitor(s) are in use (-e and/or -m). Concretley, this script can be used w/ the following argument combinations:
+
+        * check-monitors = no args: prints to stdout the monitor names
+        * check-monitors -c = count: prints to stdout the number of monitors in use
+        * check-monitors -e = external: rc=0 indicates external monitors are in use, rc=1 that they'r not
+        * check-monitors -e -m [rc|boolean] = external + mechanism: indicates via the provided mechanism whether external monitors are in use 
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -c, --count         optional, cannot be used w/ -e or -m; if specified, the count of monitors is printed to stdout
+    -e, --external      optional; if specified, indicates via the mechanism specified w/ -m if external monitors are in use
+    -m, --mechanism     optional; used w/ -e; defaults to "rc"; valid values include "rc" and "boolean"; the mechanism to use to report for -e; if "rc", rc=0 if external
+                        monitors are in use, rc=1 if not; if "boolean", use "true" for the former and "false" for the latter
+    -h, --help          display this message
+help
+}
+
+declare -A HOW=(
+    ["rc"]="rc" 
+    ["boolean"]="boolean" 
+)
+
+BUILTIN="eDP-1"
+
+COUNT=""
+EXTERNAL=""
+MECHANISM=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -c|--count)
+      COUNT="true"
+      shift
+      ;;
+    -e|--external)
+      EXTERNAL="true"
+      shift
+      ;;
+    -m|--mechanism)
+      MECHANISM="${2}"
+      shift
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+# -c can't be used w/ -e or -m
+if [[ -n "${COUNT}" ]] && [[ -n "${EXTERNAL}" || -n "${MECHANISM}" ]]; then
+    echo "[ERROR] -c|--count cannot be used w/ -e|--external or -m|--mechanism"
+    exit 1
+fi
+
+if [[ -n "${MECHANISM}" ]] && [[ -z "${EXTERNAL}" ]] && [[ -z "${COUNT}" ]]; then
+    echo "[ERROR] -m|--mechanism should only be used w/ -e|--external"
+    exit 1
+fi
+
+# if -m, ensure it's valid
+if [[ -n "${MECHANISM}" ]] && [[ -z "${HOW[${MECHANISM}]+x}" ]]; then
+    echo "[ERROR] -m|--mechanism must be one of {${!HOW[*]}}, not \"${MECHANISM}\""
+    exit 1
+fi
+
+# if -e but not -m, default -m to rc
+if [[ -n "${EXTERNAL}" ]] && [[ -z "${MECHANISM}" ]]; then
+    MECHANISM="rc"
+fi
+
+mapfile -t REPORT < <(xrandr --listactivemonitors | grep -v "Monitors" | awk '{ print $4}' )
+MONITOR_COUNT="${#REPORT[@]}"
+
+if [[ "${#REPORT[@]}" -eq 0 ]]; then
+    echo "[ERROR] Unable to retrieve monitor report"
+    exit 1
+fi
+
+if [[ "${COUNT}" == "true" ]]; then
+    echo "${MONITOR_COUNT}"
+    exit 0
+fi
+
+if [[ "${EXTERNAL}" != "true" ]]; then
+    printf '%s\n' "${REPORT[@]}"
+    exit 0
+fi
+
+# if we're here, we know we need to check if external monitors are being used
+USING_EXTERNAL="$([[ "${MONITOR_COUNT}" -eq 1 ]] && [[ "${REPORT[0]}" == "${BUILTIN}" ]] && echo "false" || echo "true")"
+
+if [[ "${MECHANISM}" == "boolean" ]]; then
+    echo "${USING_EXTERNAL}"
+    exit 0
+fi
+
+# implicit "else exit 0" if this case is false
+if [[ "${USING_EXTERNAL}" != "true" ]]; then 
+    exit 1 
+fi
+

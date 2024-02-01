@@ -33,7 +33,6 @@ OPTIONS
     -v, --verbose   optional; if provided, the script prints execution information to the console
     --dry-run       optional; runs the script w/out making state changes
     -h, --help      print this message
-
 help
 }
 
