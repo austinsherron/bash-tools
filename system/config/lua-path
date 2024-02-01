@@ -92,23 +92,17 @@ if [[ "${#VALID_DIRS[@]}" -eq "0" ]]; then
     exit 1
 fi
 
-readarray -d '' LUA_DIRS < <(find "${VALID_DIRS[@]}" ${ARGS} -name "${PATTERN}" -print0)
+find "${VALID_DIRS[@]}" ${ARGS} -name "${PATTERN}" -print0 | 
+    while IFS= read -r -d '' path; do 
+        LUA_FILE_PATH="${path}/?.lua"
+        LUA_INIT_PATH="${path}/?/init.lua"
 
-LUA_PATHS=()
+        if [[ "${VERBOSE}" = "true" ]]; then
+            echo "${LUA_FILE_PATH}"
+            echo "${LUA_INIT_PATH}"
+        fi
 
-for path in "${LUA_DIRS[@]}"; do
-    LUA_FILE_PATH="${path}/?.lua"
-    LUA_INIT_PATH="${path}/?/init.lua"
-
-    if [[ "${VERBOSE}" = "true" ]]; then
-        echo "${LUA_FILE_PATH}"
-        echo "${LUA_INIT_PATH}"
-    fi
-
-    LUA_PATHS+=("${LUA_FILE_PATH}")
-    LUA_PATHS+=("${LUA_INIT_PATH}")
+    echo -n ";${LUA_FILE_PATH}"
+    echo -n ";${LUA_INIT_PATH}"
 done
-
-LUA_PATH="$(join_by ";" "${LUA_PATHS[@]}")"
-echo "${LUA_PATH}"
 
