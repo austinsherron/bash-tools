@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${CODE_ROOT}/lib/bash/utils.sh"
+
+
+USAGE="logger -l level [-p prefix] [-t type] [-f] [-n]"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Logs messages to files and stdout based on logger configuration and provided arguments.
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    MSG                 components of the message to be logged
+
+OPTIONS
+
+    -l, --log-level     the log level of the message; determines which messages get logged to stdout; see log/log-level
+    -p, --prefix        optional; a label w/ which to prefix log messages for enhanced logging granularity
+    -t, --type          optional, defaults to "default"; determines the log file to which logs are written; provided types are used to construct paths of the following 
+                        form: "${LOG_ROOT}/${TYPE}.log"; if that file doesn't exist, it will be created
+    -f, --force         optional; if present, always log the message to sdtout, regardless of log levels
+    -n, --no-fmt        optional; if present, the log line won't be formatted w/ log level, prefix, date, etc.
+    -h, --help          optional; display this message
+help
+}
+
+
+LOG_LINE=""
+LOG_LEVEL=""
+PREFIX=""
+NO_FMT=""
+FORCE=""
+LOG_PATH="${LOG_ROOT}/default.log"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -l|--log-level)
+      LOG_LEVEL="$2"
+      shift
+      shift
+      ;;
+    -p|--prefix)
+      PREFIX="${2}"
+      shift
+      shift
+      ;;
+    -t|--type)
+      LOG_PATH="${LOG_ROOT}/${2}.log" 
+      shift
+      shift
+      ;;
+    -f|--force)
+      FORCE="true"
+      shift
+      ;;
+    -n|--no-fmt)
+      NO_FMT="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    -*)
+      usage
+      exit 1
+      ;;
+    *)
+      LOG_LINE="${LOG_LINE} ${1}"
+      shift
+      ;;
+  esac
+done
+
+
+# arg validation
+if [[ -z "${LOG_LEVEL}" ]]; then
+    echo "[ERROR] -l|--log-level is required"
+    exit 1
+fi
+
+# create log file if it doesn't exist
+if [[ ! -f "${LOG_PATH}" ]]; then
+    touch "${LOG_PATH}" 
+fi
+
+# format log line; if necessary
+if [[ -z "${NO_FMT}" ]]; then
+    LOG_LEVEL="$(to_upper "${LOG_LEVEL}")"
+    PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(to_upper "${PREFIX}")]" || echo "")"
+    LOG_LINE="[${LOG_LEVEL}] ${PREFIX}${LOG_LINE} ($(date))" >> "${LOG_PATH}"
+fi
+
+# write to log file
+echo "${LOG_LINE}" >> "${LOG_PATH}"
+
+{ log-level "${LOG_LEVEL}"; ERR="$?"; } || true
+
+# propagate unexpected error
+if [[ "${ERR}" -eq 2 ]]; then
+    exit 1
+# write to stdout
+elif [[ "${ERR}" -eq 0 ]] || [[ "${FORCE}" == "true" ]]; then
+    echo "${LOG_LINE}"
+fi
+
