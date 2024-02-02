@@ -25,7 +25,7 @@ USAGE
 OPTIONS
 
     -d, --dir       multi-valued; directories in which to search for lua sources 
-    -p, --pattern   optional, defaults to "lua"; the name pattern that identifies lua sources
+    -p, --pattern   optional, defaults to "lua"; the pattern that identifies lua sources; can be a directory name or partial path
     -a, --args      optional; args passed to the find command that searches for lua sources; overrides built-in find filter args
     -s, --strict    optional; if present, the script will fail if any single provided search dir is invalid (i.e.: doesn't exist)
     -v, --verbose   optional; if present, the script will print to stdout the paths of discovered lua sources
@@ -91,7 +91,7 @@ if [[ "${#VALID_DIRS[@]}" -eq "0" ]]; then
     exit 1
 fi
 
-find "${VALID_DIRS[@]}" ${ARGS} -name "${PATTERN}" -print0 | 
+find "${VALID_DIRS[@]}" ${ARGS} -path "*/${PATTERN}" -print0 | 
     while IFS= read -r -d '' path; do 
         LUA_FILE_PATH="${path}/?.lua"
         LUA_INIT_PATH="${path}/?/init.lua"

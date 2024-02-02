@@ -5,7 +5,7 @@ set -Eeuo pipefail
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="usage: crontabctl -s -c [-u] [-q] [-d] [-m|--strict] [-v]"
+USAGE="usage: crontabctl -s -c [-u] [-q] [-d] [-l path] [-m|--strict] [-v]"
 
 usage() {
     echo "${USAGE}"
@@ -39,6 +39,7 @@ OPTIONS
     -u, --user          optional; defaults to the current user; the user whose crontab should be written/queried
     -q, --query         optional; if present, the script will query for a matching crontab entry; return code 0 indicates the entry is already present, return code 1 
                         indicates it's not, and return code 2 indicates that an entry w/ the provided command is present, but the entry's schedule is different
+    -l, --log           optional, should be a valid file path; ignored for deletions (-d|--delete); if present, a cron's stdout output will be redirected to this file
     -m, --modify        optional; mutually exclusive w/ --strict; if present, the script will modify an entry's schedule if an entry w/ a matching cmd is found
     -d, --delete        optional; if present, the script will delete an entry if a full match found, and will delete an entry if a cmd match is found and -m is specified
     --strict            optional; mutually exclusive w/ -m; if present, instead of ignoring or updating a matching entry, the script will fail w/ a return code of 1 if an 
@@ -53,6 +54,7 @@ SCHEDULE=""
 CMD=""
 FOR_USER="${USERNAME}"
 QUERY=""
+LOG_PATH=""
 MODIFY=""
 DELETE=""
 STRICT=""
@@ -69,22 +71,27 @@ STRICTNESS=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     -s|--schedule)
-      SCHEDULE="${2}"
+      SCHEDULE="$([[ -z "${2+x}" ]] && echo "" || echo "${2}")"
       shift
       shift
       ;;
     -c|--cmd)
-      CMD="${2}"
+      CMD="$([[ -z "${2+x}" ]] && echo "" || echo "${2}")"      
       shift
       shift
       ;;
     -u|--user)
-      FOR_USER="${2}"
+      FOR_USER="$([[ -z "${2+x}" ]] && echo "" || echo "${2}")"
       shift
       shift
       ;;
     -q|--query)
       QUERY="true"
+      shift
+      ;;
+    -l|--log)
+      LOG_PATH="$([[ -z "${2+x}" ]] && echo "" || echo "${2}")"      
+      shift
       shift
       ;;
     -m|--modify)
@@ -221,6 +228,8 @@ handle_nothing_to_do() {
 }
 
 
+# arg validation 
+
 if [[ -z "${SCHEDULE}" && "${QUERY}" != "true" ]]; then
     log "-s|--schedule is required" "ERROR" "true" "true"
     exit 1
@@ -228,6 +237,11 @@ fi
 
 if [[ -z "${CMD}" && "${QUERY}" != "true" ]]; then
     log "-c|--cmd is required" "ERROR" "true" "true"
+    exit 1
+fi
+
+if [[ -n "${LOG_PATH}" && ! -f "${LOG_PATH}" ]]; then
+    log "-l|--log must be a valid file path" "ERROR" "true" "true"
     exit 1
 fi
 
@@ -243,13 +257,13 @@ fi
 set_modes
 log "Running w/ modifiers=$(get_modes_str)" "INFO" "false" "true"
 
-CRONTAB_LINE=""
+LOG_STR="$([[ -n "${LOG_PATH}" ]] && echo " >> ${LOG_PATH}" || echo "")"
+CRONTAB_LINE="$(echo "${SCHEDULE} ${CMD}${LOG_STR}" | xargs)"
 
-if [[ -n "${SCHEDULE}" && -n "${CMD}" ]]; then
-    CRONTAB_LINE="${SCHEDULE} ${CMD}"
+if [[ -n "${CRONTAB_LINE}" ]]; then
     log "Using crontab line \"${CRONTAB_LINE}\""
 else
-    log "-s|--schedule, -c|--cmd not present; querying for all crontab entries"
+    log "-s|--schedule, -c|--cmd, -l|--log not present; querying for all crontab entries"
 fi
 
 log "Reading crontab content"
