@@ -12,58 +12,46 @@ This repo contains--or is intended to contain--production ready scripts that I r
 │   ├── deprecated
 │   └── wip
 ├── system
-│   ├── backup
-│   │   ├── do-backup
-│   │   └── incremental-backup
+│   ├── snapshot
 │   └── systemd
-│       ├── install-units
 │       ├── mv-stg-backups
-│       └── run-backup
+│       └── run-snapshot
 └── util
     └── web
 ```
 
-#### Inactive
-
-Scripts under inactive are either in development, hopelessly malfunctioning w/ little to no hope of being fixed in the near-mid term, or just really no longer necessary/useful. 
-
-#### System
-
-Anything related to "system" mana
-
-### Manifest
-
-###
-
-**TODO**
+* Git - Custom git scripts.
+* Inactive - Scripts under inactive are either in development, hopelessly malfunctioning w/ little to no hope of being fixed in the near-mid term, or just really no longer necessary/useful. 
+* System - Anything related to "system" management, i.e.: backups, systemd units, etc.
+* Utils - Miscellaneous utilities.
 
 ## To-Do List(s)
 
-### New Tools
+### Features/New Scripts
 
-- [ ] run-backup system
+- [x] Snapshot (backup) system for user files (ideally for arbitrary files)
+- [ ] Formalize git functions by creating scripts for them/add scripts for oft-repeated git tasks
+- [ ] (Nerd) Font installation: takes a font name as a param, checks if it's already installed, installs it if not
+- [ ] Wrapper for xplr that gives callers the option to do something useful w/ the selected item (i.e.: cd into it, open it, edit it, delete it, etc.)
+- [ ] Add more sophisticated TUI for snapshot
+- [ ] Add standalone script script for restoration
 
-### Tasks/Fixes
+### Tasks
 
-- [ ] Cleanup/deprecate scripts
 - [ ] Write unit tests
+
+### Fixes
+
+- [ ] Fix 2-fa (issue caused by the fact that's it's dependent on an alias)
+- [ ] Remove exec perms from run-snapshot and mv-stg-backups
 
 ## Fanciful Ideas
 
-* **Deprecated** once I discovered [zoxide](https://github.com/ajeetdsouza/zoxide)
-~~* fzf based `switch` utility that reads key to path mappings to search~~
-~~* reads key to path mappings~~
-~~* searches those paths based on the key provided at runtime~~
-~~* search query (to find?) is parameterizable~~
-~~* pipes output to fzf~~
-~~* executes command on output~~
-~~  * also potentially parameterizable~~
-* util for automatically adding symbolic links~~
-  * searches for hidden files, which contain link spec
-  * creates links
-* util for finding all dirs w/ a given property and dropping a file in
-  them
-  * intended to add .dropbox-ignore files in git repo dirs
-  * thinking about it though, this could be accomplished w/ the first
-    script I describe...
+* Util for automatically adding symbolic links
+  * Searches for hidden files, which contain link spec
+  * Creates links
+* Util for finding all dirs w/ a given property and dropping a file in them
+  * Intended to add .dropbox-ignore files in git repo dirs
+  * Thinking about it though, this could be accomplished w/ the first script I
+    describe...
 
