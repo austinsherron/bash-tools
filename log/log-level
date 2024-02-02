@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${CODE_ROOT}/lib/bash/utils.sh"
+
+
+USAGE="log-level LOG_LEVEL"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Validates the provided level and tests its severity against the current log level to determine if a log message needs to be written to stdout. 
+
+    Log levels indicate the severity/urgency of a log message, and determine which messages should be propagated to callers. For example, if the current log level is WARN,
+    only messages w/ a log level >= WARN (i.e.: WARN, ERROR) will propagate to callers.
+
+    Valid log levels include (in order from least to most sever):
+
+        * TRACE
+        * DEBUG
+        * INFO
+        * WARN
+        * ERROR
+
+    Additionally, the current/default log level may be set to "OFF" (though logger callers cannot pass that level).
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    LOG_LEVEL       the log level to validate and test against the current log level
+
+OPTIONS
+
+    -h, --help      optional; display this message
+help
+}
+
+
+LOG_LEVEL=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -h|--help)
+      help
+      exit 0
+      ;;
+    -*)
+      usage
+      exit 1
+      ;;
+    *)
+      LOG_LEVEL="$(to_upper "${1}")"
+      shift
+      ;;
+  esac
+done
+
+
+declare -A LOG_LEVELS=([TRACE]=0 [DEBUG]=1 [INFO]=2 [WARN]=3 [ERROR]=4 [OFF]=5)
+declare -A PUBLIC_LOG_LEVELS=([TRACE]=0 [DEBUG]=1 [INFO]=2 [WARN]=3 [ERROR]=4)
+
+# arg validation
+if [[ -z "${LOG_LEVEL}" ]]; then
+    echo "[ERROR] -l|--log-level is required"
+    exit 2
+fi
+
+# config validation
+
+if [[ -z "${CURRENT_LOG_LEVEL+x}" ]] && [[ -z "${DEFAULT_LOG_LEVEL+x}" ]]; then
+    echo '[ERROR] unable to determine current log level'
+    exit 2
+elif [[ -z "${CURRENT_LOG_LEVEL+x}" ]]; then
+    CURRENT_LOG_LEVEL="${DEFAULT_LOG_LEVEL}"
+fi
+
+if [[ -z "${PUBLIC_LOG_LEVELS[${LOG_LEVEL}]+x}" ]]; then
+    echo "[ERROR] -l|--log-level (${LOG_LEVEL}) is not a valid log level"
+    exit 2
+fi
+
+if [[ -z "${LOG_LEVELS[${CURRENT_LOG_LEVEL}]+x}" ]]; then
+    echo "[ERROR] CURRENT_LOG_LEVEL (${CURRENT_LOG_LEVEL}) is not a valid log level"
+    exit 2
+fi
+
+CURRENT_SEVERITY="${LOG_LEVELS[${CURRENT_LOG_LEVEL}]}"
+SEVERITY="${LOG_LEVELS[${LOG_LEVEL}]}"
+
+# check if the provided level is high enough severity to log to stdout
+if [[ "${SEVERITY}" -ge "${CURRENT_SEVERITY}" ]]; then
+    exit 0
+else
+    exit 1
+fi
+
