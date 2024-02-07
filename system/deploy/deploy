@@ -28,7 +28,7 @@ POSITIONAL ARGUMENTS
 OPTIONS
 
     -s, --source        optional, defaults to cwd; the dir from which to install
-    -t, --target        optional, defaults to /usr/local/bin or stow's default, depening on the availability of path related env variables; the dir to which to install
+    -t, --target        optional, defaults to the value of LOCAL_BIN or stow's default, depending on the availability of path related env variables; the dir to which to install
     -u, --uninstall     optional; indicates that packages should be remove
     -r, --reinstall     optional; indicates that packages should be remove
     -d, --dry-run       optional; simulate changes based on provided args but make no file system changes
@@ -89,8 +89,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 
-if [[ -z "${TGT}" ]] && [[ -z "${SYS_BIN+x}" ]]; then
-    echo "[WARN] -t|--target not provided and SYS_BIN not set; falling back to stow default"
+if [[ -z "${TGT}" ]] && [[ -z "${LOCAL_BIN+x}" ]]; then
+    echo "[WARN] -t|--target not provided and LOCAL_BIN not set; falling back to stow default"
 elif [[ -z "${TGT}" ]]; then
     TGT="${SYS_BIN}"
 fi
