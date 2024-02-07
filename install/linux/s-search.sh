@@ -9,17 +9,17 @@ source /etc/profile.d/shared_paths.sh
 
 PKG="github.com/zquestz/s"
 DST="${EXTERNAL_PKGS}/s-search"
-BIN="${DST}/s"
+SBIN="${DST}/s"
 
 # clone repo
 [[ -d "${DST}" ]] || git clone "https://${PKG}" "${DST}"
 
 # build
 cd "${DST}"
-[[ -f "${BIN}" ]] || make
+[[ -f "${SBIN}" ]] || make
 
 # install
-sudo mv "${BIN}" "${SHARED_BINS}"
+sudo mv "${SBIN}" "${SYS_BIN}"
 
 # "clean up"
 cd -

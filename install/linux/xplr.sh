@@ -23,7 +23,7 @@ if [[ ! -f "${OUT}/xplr" ]]; then
 fi
 
 # install (i.e.: mv to path dir)
-sudo mv "${OUT}/xplr" "${SHARED_BINS}"
+sudo mv "${OUT}/xplr" "${SYS_BIN}"
 # clean up
 rm -rf "${OUT}" "${PKG}"
 

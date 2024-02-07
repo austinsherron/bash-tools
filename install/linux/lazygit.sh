@@ -16,7 +16,7 @@ OUT="lazygit-${VERSION}"
 [[ -d "${OUT}" ]] || mkdir "${OUT}"
 [[ -f "${OUT}/lazygit" ]] || tar -xvf lazygit.tar.gz lazygit -C "${OUT}"
 # install
-sudo mv lazygit "${SHARED_BINS}"
+sudo mv lazygit "${SYS_BIN}"
 # clean up
 rm -rf "${OUT}" lazygit*.tar.gz
 

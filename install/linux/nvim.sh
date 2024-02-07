@@ -18,7 +18,7 @@ PKG="nvim-linux64.tar.gz"
 URL="https://github.com/neovim/neovim/releases/download/${VERSION}/${PKG}"
 
 OUT="${PKG%.tar.gz}"
-DST="${USR_LOCAL}/nvim"
+DST="${SYS_ROOT}/nvim"
 
 
 # TODO: add ability to change VERSION and automatically update w/o manually removing the 
