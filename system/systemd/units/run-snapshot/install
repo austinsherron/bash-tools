@@ -5,17 +5,18 @@ set -Eeuo pipefail
 
 # note: must be run in root user login shell (i.e.: sudo -i)
 
-if [[ ! "$(check-installed take-snapshot snapshot install-units -v)" > /dev/null ]]; then
+if ! which deploy; then
+    echo "[ERROR] install: deploy not installed"
     exit 1
 fi
 
-# install runnables
-ln -sf "${TOOLS_ROOT}/system/snapshot/take-snapshot" "${SHARED_BINS}"
-ln -sf "${TOOLS_ROOT}/system/snapshot/snapshot" "${SHARED_BINS}"
+if ! which snapshot; then
+    deploy snapshot -s "${TOOLS_ROOT}/system"
+fi
 
 # install config
-mkdir -p "${SHARED_CONFIG_ROOT}/snapshot"
-cp -r "${INT_TOOLING_ROOT}/snapshot/" "${SHARED_CONFIG_ROOT}/"
+mkdir -p "${SYS_CONFIG}/snapshot"
+cp -r "${CONFIG_ROOT_PUB}/snapshot/" "${SYS_CONFIG}/"
 
 # install systemd system units
 install-units -d "${TOOLS_ROOT}/system/systemd/units/run-snapshot" -o system -t timer

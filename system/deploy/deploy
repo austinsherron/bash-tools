@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+source "/etc/profile.d/shared_paths.sh"
+
 
 USAGE="deploy package {package} [-s] [-t] [-r] [-u] [-d] [-v 0..5]"
 
@@ -86,16 +88,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${TGT}" ]] && [[ ! -f "/etc/profile.d/shared_paths.sh" ]]; then
-    echo "Warning: unable to load shared path env vars: shared_paths.sh does not exist"
-    echo "Warning: unable to default -t|--target value; falling back to stow default"
-elif [[ -z "${TGT}" ]] && [[ -f "/etc/profile.d/shared_paths.sh" ]]; then
-    source "/etc/profile.d/shared_paths.sh"
-    TGT="${SHARED_BINS}"
+
+if [[ -z "${TGT}" ]] && [[ -z "${SYS_BIN+x}" ]]; then
+    echo "[WARN] -t|--target not provided and SYS_BIN not set; falling back to stow default"
+elif [[ -z "${TGT}" ]]; then
+    TGT="${SYS_BIN}"
 fi
 
 if [[ "${#PKGS[@]}" -lt 1 ]]; then
-    echo "At least one package is required"
+    echo "[ERROR] at least one package is required"
     exit 1
 fi
 
