@@ -5,7 +5,7 @@ set -Eeuo pipefail
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="usage: lua-path -d {-d} [-e] [-p] [-a] [-s] [-v]"
+USAGE="usage: lua-path {-d} [-p] [-a] [-i] [-s]"
 
 usage() {
     echo "${USAGE}"
@@ -24,12 +24,13 @@ USAGE
 
 OPTIONS
 
-    -d, --dir       multi-valued; directories in which to search for lua sources 
-    -p, --pattern   optional, defaults to "lua"; the pattern that identifies lua sources; can be a directory name or partial path
-    -a, --args      optional; args passed to the find command that searches for lua sources; overrides built-in find filter args
-    -s, --strict    optional; if present, the script will fail if any single provided search dir is invalid (i.e.: doesn't exist)
-    -v, --verbose   optional; if present, the script will print to stdout the paths of discovered lua sources
-    -h, --help      display this message
+    -d, --dir           optional if -i|--inspect is used; multi-valued; directories in which to search for lua sources
+    -p, --pattern       optional, defaults to "lua"; the pattern that identifies lua sources; can be a directory name or partial path
+    -a, --args          optional; args passed to the find command that searches for lua sources; overrides built-in find filter args
+    -i, --inspect       optional; if present, prints lua-path to stdout in human readable format
+    -s, --strict        optional; if present, the script will fail if any single provided search dir is invalid (i.e.: doesn't exist)
+    -v, --verbose       optional; if present, the script will print to stdout the paths of discovered lua sources
+    -h, --help          display this message
 help
 }
 
@@ -38,6 +39,7 @@ DIRS=()
 VALID_DIRS=()
 PATTERN="lua"
 ARGS="-maxdepth 4 -type d"
+INSPECT=""
 STRICT=""
 VERBOSE=""
 
@@ -56,6 +58,10 @@ while [[ $# -gt 0 ]]; do
     -a|--args)
       ARGS="${2}"
       shift
+      shift
+      ;;
+    -i|--inspect)
+      INSPECT="true"
       shift
       ;;
     -s|--strict)
@@ -77,31 +83,37 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+
 for dir in "${DIRS[@]}"; do
     if [[ -d "${dir}" ]]; then
         VALID_DIRS+=("${dir}")
-    else 
+    else
         echo "Warning: ${dir} is not a valid directory"
         [[ "${STRICT}" = "true" ]] && exit 1
     fi
 done
 
-if [[ "${#VALID_DIRS[@]}" -eq "0" ]]; then
+if [[ "${#VALID_DIRS[@]}" -eq "0" ]] && [[ -z "${INSPECT}" ]]; then
     echo "At least one (1) valid search directory (-d|--dir) is required"
     exit 1
+elif [[ "${#VALID_DIRS[@]}" -eq "0" ]] && [[ "${INSPECT}" == "true" ]]; then
+    [[ -n "${LUA_PATH+x}" ]] && echo "${LUA_PATH}" | tr ';' '\n' || echo "LUA_PATH is unset"
+    exit 0
 fi
 
-find "${VALID_DIRS[@]}" ${ARGS} -path "*/${PATTERN}" -print0 | 
-    while IFS= read -r -d '' path; do 
+find "${VALID_DIRS[@]}" ${ARGS} -path "*/${PATTERN}" -print0 |
+    while IFS= read -r -d '' path; do
         LUA_FILE_PATH="${path}/?.lua"
         LUA_INIT_PATH="${path}/?/init.lua"
 
-        if [[ "${VERBOSE}" = "true" ]]; then
+        if [[ "${VERBOSE}" == "true" ]] || [[ "${INSPECT}" == "true" ]]; then
             echo "${LUA_FILE_PATH}"
             echo "${LUA_INIT_PATH}"
         fi
 
-    echo -n ";${LUA_FILE_PATH}"
-    echo -n ";${LUA_INIT_PATH}"
+    if [[ -z "${INSPECT}" ]]; then
+        echo -n ";${LUA_FILE_PATH}"
+        echo -n ";${LUA_INIT_PATH}"
+    fi
 done
 
