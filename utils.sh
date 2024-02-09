@@ -57,3 +57,10 @@ function yes_or_no() {
     [[ $REPLY =~ ^[y]$ ]] && echo "true" || echo "false"
 }
 
+function required_param() {
+    if [[ -z "${2}" ]]; then
+        echo "${1} is a required param"
+        exit 1
+    fi
+}
+
