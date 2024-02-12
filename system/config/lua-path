@@ -5,7 +5,7 @@ set -Eeuo pipefail
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="usage: lua-path {-d} [-p] [-a] [-i] [-s]"
+USAGE="usage: lua-path {-d} [-p] [-a] [-i] [-s] [--depth] [--args]"
 
 usage() {
     echo "${USAGE}"
@@ -26,9 +26,11 @@ OPTIONS
 
     -d, --dir           optional if -i|--inspect is used; multi-valued; directories in which to search for lua sources
     -p, --pattern       optional, defaults to "lua"; the pattern that identifies lua sources; can be a directory name or partial path
-    -a, --args          optional; args passed to the find command that searches for lua sources; overrides built-in find filter args
+    -a, --append        optional; if present prints new paths appended to existing value of LUA_PATH
     -i, --inspect       optional; if present, prints lua-path to stdout in human readable format
     -s, --strict        optional; if present, the script will fail if any single provided search dir is invalid (i.e.: doesn't exist)
+    --depth             optional, defaults to 4; directory search depth; note: can be overwritten by args (i.e.: -maxdepth n)
+    --args              optional; args passed to the find command that searches for lua sources; overrides built-in find filter args
     -v, --verbose       optional; if present, the script will print to stdout the paths of discovered lua sources
     -h, --help          display this message
 help
@@ -38,9 +40,11 @@ help
 DIRS=()
 VALID_DIRS=()
 PATTERN="lua"
-ARGS="-maxdepth 4 -type d"
+APPEND=""
 INSPECT=""
 STRICT=""
+DEPTH="-maxdepth 4"
+ARGS="-type d"
 VERBOSE=""
 
 while [[ $# -gt 0 ]]; do
@@ -55,9 +59,8 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
-    -a|--args)
-      ARGS="${2}"
-      shift
+    -a|--append)
+      APPEND="true"
       shift
       ;;
     -i|--inspect)
@@ -66,6 +69,16 @@ while [[ $# -gt 0 ]]; do
       ;;
     -s|--strict)
       STRICT="true"
+      shift
+      ;;
+    --depth)
+      DEPTH="-maxdepth ${2}"
+      shift
+      shift
+      ;;
+    --args)
+      ARGS="${2}"
+      shift
       shift
       ;;
     -v|--verbose)
@@ -101,19 +114,29 @@ elif [[ "${#VALID_DIRS[@]}" -eq "0" ]] && [[ "${INSPECT}" == "true" ]]; then
     exit 0
 fi
 
-find "${VALID_DIRS[@]}" ${ARGS} -path "*/${PATTERN}" -print0 |
+if [[ "${APPEND}" == "true" ]] && [[ -n "${LUA_PATH+x}" ]]; then
+    ( IFS=';'
+      for PATH in ${LUA_PATH}; do
+          if [[ "${INSPECT}" == "true" ]]; then
+              echo "${PATH}"
+          else
+              echo -n ";${PATH}"
+          fi
+      done
+    )
+fi
+
+find "${VALID_DIRS[@]}" ${ARGS} ${DEPTH} -path "*/${PATTERN}" -print0 |
     while IFS= read -r -d '' path; do
         LUA_FILE_PATH="${path}/?.lua"
         LUA_INIT_PATH="${path}/?/init.lua"
 
-        if [[ "${VERBOSE}" == "true" ]] || [[ "${INSPECT}" == "true" ]]; then
+        if [[ "${INSPECT}" == "true" ]]; then
             echo "${LUA_FILE_PATH}"
             echo "${LUA_INIT_PATH}"
+        else
+            echo -n ";${LUA_FILE_PATH}"
+            echo -n ";${LUA_INIT_PATH}"
         fi
-
-    if [[ -z "${INSPECT}" ]]; then
-        echo -n ";${LUA_FILE_PATH}"
-        echo -n ";${LUA_INIT_PATH}"
-    fi
 done
 
