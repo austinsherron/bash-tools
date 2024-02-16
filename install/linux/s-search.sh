@@ -16,7 +16,7 @@ SBIN="${DST}/s"
 
 # build
 cd "${DST}"
-[[ -f "${SBIN}" ]] || make
+[[ -f "${SBIN}" ]] || go build # NOTE: `make` isn't working...
 
 # install
 sudo mv "${SBIN}" "${SYS_BIN}"
