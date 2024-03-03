@@ -9,8 +9,8 @@ set -Eeuo pipefail
 # clone this repo
 
 echo  "[INFO] adding git-core apt repo"
-sudo add-apt-repository ppa:git-core/ppa
+sudo add-apt-repository -y ppa:git-core/ppa
 
 echo  "[INFO] installing git"
-sudo apt update && sudo apt install git
+sudo apt update -y && sudo apt install -y git
 

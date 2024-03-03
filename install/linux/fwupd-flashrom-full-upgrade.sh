@@ -3,12 +3,12 @@
 set -Eeuo pipefail
 
 
-sudo add-apt-repository ppa:starlabs/main
-sudo add-apt-repository ppa:starlabs/coreboot
-sudo add-apt-repository universe
-sudo apt update
+sudo add-apt-repository -y ppa:starlabs/main
+sudo add-apt-repository -y ppa:starlabs/coreboot
+sudo add-apt-repository -y universe
+sudo apt update -y
 sudo apt full-upgrade -y
-sudo apt install fwupd
-sudo apt -f install
+sudo apt install -y fwupd
+sudo apt -f -y install
 # fwupdmgr refresh --force
 # fwupdmgr switch-branch

@@ -48,5 +48,5 @@ curl -sS ${KEY_URL} | sudo gpg --dearmor --output ${KEYRING_PATH}
 
 # install 1password/1password-cli
 echo "[INFO] installing 1password and 1password-cli"
-sudo apt update && sudo apt install 1password 1password-cli
+sudo apt update -y && sudo apt install -y 1password 1password-cli
 

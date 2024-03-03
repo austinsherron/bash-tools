@@ -8,6 +8,6 @@ PKG="MullvadVPN-${VERSION}_amd64.deb"
 URL="https://github.com/mullvad/mullvadvpn-app/releases/download/${VERSION}/${PKG}"
 
 [[ -f "${PKG}" ]] || wget "${URL}"
-sudo apt install "./${PKG}"
+sudo apt install -y "./${PKG}"
 rm "${PKG}"
 

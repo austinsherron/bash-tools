@@ -24,7 +24,7 @@ echo "${CHECKSUM} ${OUT}" | sha256sum --check --status
 # make executable
 chmod +x ${OUT}
 # install
-sudo apt install ./${OUT}
+sudo apt install -y ./${OUT}
 # clean up
 rm -rf "${OUT}"
 

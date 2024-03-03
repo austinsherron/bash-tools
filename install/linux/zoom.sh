@@ -17,7 +17,7 @@ if [[ "$(which zoom)" ]]; then
 fi
 
 [[ -f "${PKG}" ]] && echo "${PKG} already downloaded" || wget "${URL}"
-sudo apt install ./${PKG}
+sudo apt install -y ./${PKG}
 
 rm -f "${PKG}"
 

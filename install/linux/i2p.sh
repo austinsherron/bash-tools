@@ -6,9 +6,9 @@ set -Eeuo pipefail
 
 
 # for i2p
-sudo apt-add-repository ppa:i2p-maintainers/i2p
+sudo apt-add-repository -y ppa:i2p-maintainers/i2p
 # for i2pd (i2p daemon)
-sudo add-apt-repository ppa:purplei2p/i2pd
-sudo apt update 
-sudo apt install i2p i2pd
+sudo add-apt-repository -y ppa:purplei2p/i2pd
+sudo apt update -y 
+sudo apt install -y i2p i2pd
 

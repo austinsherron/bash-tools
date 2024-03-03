@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 
-sudo apt update && sudo apt install -y wget gnupg lsb-release apt-transport-https ca-certificates
+sudo apt update -y && sudo apt install -y wget gnupg lsb-release apt-transport-https ca-certificates
 
 distro=$(if echo " una bookworm vanessa focal jammy bullseye vera uma " | grep -q " $(lsb_release -sc) "; then echo $(lsb_release -sc); else echo focal; fi)
 
@@ -18,7 +18,7 @@ Architectures: amd64
 Signed-By: /usr/share/keyrings/librewolf.gpg
 EOF
 
-sudo apt update
+sudo apt update -y
 
 sudo apt install librewolf -y
 

@@ -4,10 +4,10 @@ set -Eeuo pipefail
 
 
 # as presented in the standard documentation
-sudo add-apt-repository ppa:starlabs/main
-sudo add-apt-repository universe
-sudo apt update
-sudo apt install fwupd libflashrom1
+sudo add-apt-repository -y ppa:starlabs/main
+sudo add-apt-repository -y universe
+sudo apt update -y
+sudo apt install -y fwupd libflashrom1
 
 # from 
 # sudo add-apt-repository ppa:starlabs/main

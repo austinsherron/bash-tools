@@ -38,7 +38,7 @@ PUB_KEY_URL=${BASE_URL}/${PUB_KEY}
 # make executable 
 sudo chmod +x "${PKG_OUT}"
 # install, if necessary
-sudo apt install "${PKG_OUT}" -y
+sudo apt install -y "${PKG_OUT}"
 # clean up
 rm -rf "${OUT}"
 

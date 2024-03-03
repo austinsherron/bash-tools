@@ -13,8 +13,8 @@ install-chromium() {
         | gpg --dearmor \
         | sudo tee /etc/apt/trusted.gpg.d/home_ungoogled_chromium.gpg > /dev/null
 
-    sudo apt update
-    sudo apt install ungoogled-chromium
+    sudo apt update -y
+    sudo apt install -y ungoogled-chromium
 }
 
 

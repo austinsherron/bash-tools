@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # source: https://guake.readthedocs.io/en/latest/user/installing.html#system-wide-installation
 
 
-sudo add-apt-repository ppa:linuxuprising/guake
-sudo apt-get update 
-sudo apt install guake
+sudo add-apt-repository -y ppa:linuxuprising/guake
+sudo apt-get update -y
+sudo apt install -y guake
 
