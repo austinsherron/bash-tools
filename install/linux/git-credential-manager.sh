@@ -3,6 +3,9 @@
 set -Eeuo pipefail
 
 
+# NOTE: this is duplicated in the dotfiles repo: we need to install git-credential-manager 
+# to clone this repo
+
 PKG="git-credential-manager"
 VERSION="2.4.1"
 OUT="gcm-linux_amd64.${VERSION}.deb"
