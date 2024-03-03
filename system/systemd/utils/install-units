@@ -37,6 +37,7 @@ help
 DIR=""
 DST=""
 TYPES=("service")
+OWNER=""
 
 VERBOSE="false"
 DRY_RUN="false"
@@ -49,6 +50,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -o|--owner)
+      OWNER="${2}"
       DST="/usr/lib/systemd/${2}"
       shift
       shift
@@ -98,7 +100,7 @@ for type in "${TYPES[@]:1}"; do
     PATTERNS="${PATTERNS} -o -name \"*.${type}\""
 done
 
-FIND_CMD="$([[ "${DRY_RUN}" == "true" ]] && echo "-print" || echo "-exec cp {} ${DST} \\;")"
+FIND_CMD="$([[ "${DRY_RUN}" == "true" ]] && echo "-print" || echo "-exec sudo cp {} ${DST} \\;")"
 FIND="find ${DIR} \( ${PATTERNS} \) ${FIND_CMD}"
 
 ## exec
@@ -109,4 +111,10 @@ if [[ "${VERBOSE}" == "true" ]]; then
 fi
 
 eval "${FIND}"
+
+if [[ "${OWNER}" = "user" ]]; then
+    systemctl --user daemon-reload
+else
+    sudo systemctl daemon-reload
+fi
 
