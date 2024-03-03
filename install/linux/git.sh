@@ -8,6 +8,13 @@ set -Eeuo pipefail
 # NOTE: this is duplicated in the dotfiles repo: we need to install up-to-date git to
 # clone this repo
 
+VERSION="2.43.0"
+
+if [[ "$(git --version | awk '{print $3}')" = "${VERSION}" ]]; then
+    echo "git already installed at version ${VERSION}; exiting"
+    exit 0
+fi
+
 echo  "[INFO] adding git-core apt repo"
 sudo add-apt-repository -y ppa:git-core/ppa
 

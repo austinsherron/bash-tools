@@ -10,6 +10,11 @@ set -Eeuo pipefail
 # NOTE: this is duplicated in the dotfiles repo: we need to install 1password and
 # 1password-cli to clone this repo
 
+if dpkg -s 1password &> /dev/null && dpkg -s 1password-cli &> /dev/null; then
+    echo "[INFO] 1password and 1password-cli are already installed; exiting"
+    exit 0
+fi
+
 BASE_URL="https://downloads.1password.com/linux"
 
 KEY_URL="${BASE_URL}/keys/1password.asc"
