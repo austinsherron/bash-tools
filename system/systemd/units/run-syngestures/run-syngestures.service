@@ -1,0 +1,10 @@
+[Unit]
+Description=Service unit (runner) for syngestures
+
+[Service]
+Restart=always
+RestartSec=1
+ExecStart=/usr/local/systemd/run-syngestures
+
+[Install]
+WantedBy=multi-user.target
