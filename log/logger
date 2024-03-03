@@ -15,7 +15,23 @@ help() {
 cat <<help
 DESCRIPTION
 
-    Logs messages to files and stdout based on logger configuration and provided arguments.
+    Logs messages to files and/or stdout based on logger configuration and provided arguments.
+
+    The only arguments required to make a logger call are a log level, -l|--log-level, and a message to log. Log levels can be any of the following:
+
+        * trace - the most verbose, fine grained logging; useful for debugging
+        * debug - verbose, fine grained logging; useful for debugging
+        * info - messages about normal system operations
+        * warn - messages about abnormal, but not necessarily dangerous, system operations
+        * error - messages about abnormal, potentially dangerous system operations that are be considered errors
+
+    Optionally, messages can be logged w/ a prefix, -p|--prefix, (for grouping related log lines), a type, -t|--type, (determines the file to which messages are logged), i
+    and a strategy, -s|--strategy. Strategies determine whether messages are written to a file, to stdout, or both. The following are valid strategies:
+
+        * normal - the default strategy; lines are written to relevant log files, but are only logged to stdout if the provided log level is >= the current log level
+        * notify - lines are only written to stdout, regardless of log level
+        * log - lines are only written to relevant log files
+        * force - lines are written to log files and stdout, regardless of the provided/current log levels
 
 USAGE
 
@@ -31,29 +47,32 @@ OPTIONS
     -p, --prefix        optional; a label w/ which to prefix log messages for enhanced logging granularity
     -t, --type          optional, defaults to "default"; determines the log file to which logs are written; provided types are used to construct paths of the following 
                         form: "${LOG_ROOT}/${TYPE}.log"; if that file doesn't exist, it will be created
-    -f, --force         optional; if present, always log the message to sdtout, regardless of log levels
+    -s, --strategy      optional, defaults to "normal"; possible values are "normal", "notify", "log", and "force"; determines where/how logs are written    
     -n, --no-fmt        optional; if present, the log line won't be formatted w/ log level, prefix, date, etc.
     -h, --help          optional; display this message
 help
 }
 
 
+declare -A STRATEGIES=([NORMAL]=1 [NOTIFY]=1 [LOG]=1 [FORCE]=1)
+
+MSGS=""
 LOG_LINE=""
 LOG_LEVEL=""
 PREFIX=""
+STRATEGY="NORMAL"
 NO_FMT=""
-FORCE=""
 LOG_PATH="${LOG_ROOT}/default.log"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -l|--log-level)
-      LOG_LEVEL="$2"
+      LOG_LEVEL="$(to_upper "${2}")"
       shift
       shift
       ;;
     -p|--prefix)
-      PREFIX="${2}"
+      PREFIX="$(to_upper "${2}")"
       shift
       shift
       ;;
@@ -62,8 +81,9 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
-    -f|--force)
-      FORCE="true"
+    -s|--strategy)
+      STRATEGY="$(to_upper "${2}")"
+      shift
       shift
       ;;
     -n|--no-fmt)
@@ -74,12 +94,9 @@ while [[ $# -gt 0 ]]; do
       help
       exit 0
       ;;
-    -*)
-      usage
-      exit 1
-      ;;
     *)
-      LOG_LINE="${LOG_LINE} ${1}"
+      MSGS="$([[ -z "${MSGS}" ]] && echo "${1}" || echo "${MSGS} ${1}")"
+      LOG_LINE="${MSGS}"
       shift
       ;;
   esac
@@ -87,8 +104,15 @@ done
 
 
 # arg validation
+
 if [[ -z "${LOG_LEVEL}" ]]; then
     echo "[ERROR] -l|--log-level is required"
+    exit 1
+fi
+
+if [[ -z "${STRATEGIES[${STRATEGY}]+x}" ]]; then
+    STRATEGIES_STR="$(echo "${!STRATEGIES[*]}" | tr ' ' '|')"
+    echo "[ERROR] -s|--strategy must be one of '${STRATEGIES_STR}', not '${STRATEGY}'"
     exit 1
 fi
 
@@ -99,21 +123,24 @@ fi
 
 # format log line; if necessary
 if [[ -z "${NO_FMT}" ]]; then
-    LOG_LEVEL="$(to_upper "${LOG_LEVEL}")"
-    PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(to_upper "${PREFIX}")]" || echo "")"
-    LOG_LINE="[${LOG_LEVEL}] ${PREFIX}${LOG_LINE} ($(date))" >> "${LOG_PATH}"
+    PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(to_upper "${PREFIX}")] " || echo "")"
+    LOG_LINE="[${LOG_LEVEL}] ${PREFIX}${LOG_LINE} ($(date))"
 fi
 
 # write to log file
-echo "${LOG_LINE}" >> "${LOG_PATH}"
+if [[ "${STRATEGY}" != "NOTIFY" ]]; then
+    echo "${LOG_LINE}" >> "${LOG_PATH}"
+fi
 
 { log-level "${LOG_LEVEL}"; ERR="$?"; } || true
 
 # propagate unexpected error
-if [[ "${ERR}" -eq 2 ]]; then
+if [[ ${ERR} -eq 2 ]]; then
     exit 1
 # write to stdout
-elif [[ "${ERR}" -eq 0 ]] || [[ "${FORCE}" == "true" ]]; then
-    echo "${LOG_LINE}"
+elif [[ "${STRATEGY}" == "NORMAL" ]] && [[ "${ERR}" -eq 0 ]]; then
+    echo "[${LOG_LEVEL}] ${MSGS}"
+elif [[ "${STRATEGY}" == "FORCE" ]] || [[ "${STRATEGY}" == "NOTIFY" ]]; then
+    echo "[${LOG_LEVEL}] ${MSGS}"
 fi
 
