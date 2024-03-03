@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+
+USAGE="check-pkg -p pkg [-m mgr] [-w]"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Checks if a package is installed. Checks can be made w/ or w/out provided a specific package manager.
+
+    If a specific package manager is provided via -m|--mgr, only that manager will be used for the check. If no package manager is specified, check the following sources
+    in this order:
+
+        * which
+        * dpkg
+        * flatpak
+        * snap
+
+    The first successful check is reported.
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -p, --pkg           the name of the package to check if installed
+    -m, --mgr           optional; the package manager to check
+    -w, --no-which      optional; if specified, which won't be used to check if -p|--pkg is installed
+    -v, --verbose       optional; if present, print to stdout messages about the script's progress
+    -h, --help          display this message
+help
+}
+
+
+PKG=""
+MGR=""
+NO_WHICH=""
+LOG_ARGS="-p check --type pkg"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -p|--pkg)
+      PKG="${2}"
+      shift
+      shift
+      ;;
+    -m|--mgr)
+      MGR="${2}"
+      shift
+      shift
+      ;;
+    -w|--no-which)
+      NO_WHICH="true"
+      shift
+      ;;
+    -v|--verbose)
+      LOG_ARGS="${LOG_ARGS} -s force"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    --logger)
+      LOG_ARGS="${2}"
+      shift
+      shift
+      ;;
+     *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+
+__log_is_installed() {
+    logger -l info "package '${PKG}' is installed (via '${1}')" ${LOG_ARGS}
+}
+
+__log_not_installed() {
+    logger -l info "package '${PKG}' not installed (via '${1}')" ${LOG_ARGS}
+}
+
+__check_which() {
+    if [[ "${NO_WHICH}" = "true" ]]; then
+        return 1
+    fi
+
+    if which "${PKG}" &> /dev/null; then
+        __log_is_installed "which"
+        return 0
+    fi
+
+    __log_not_installed "which"
+    return 1
+}
+
+__check_dpkg() {
+    if dpkg -s "${PKG}" &> /dev/null; then
+        __log_is_installed "dpkg"
+        return 0
+    fi
+
+    __log_not_installed "dpkg"
+    return 1
+}
+
+__check_flatpak() {
+    if flatpak list --columns=application | grep -q -i "^${PKG}$"; then
+        __log_is_installed "flatpak"
+        return 0
+    fi
+
+    __log_not_installed "flatpak"
+    return 1
+}
+
+__check_snap() {
+    if snap list | tail --lines=+2 | awk '{print $1}' | grep -q -i "^${PKG}$"; then
+        __log_is_installed "snap"
+        return 0
+    fi
+
+    __log_not_installed "snap"
+    return 1
+}
+
+__check_all() {
+    if __check_which; then
+        return 0
+    fi
+
+    if __check_dpkg; then
+        return 0
+    fi
+
+    if __check_flatpak; then
+        return 0
+    fi
+
+    if __check_snap; then
+        return 0
+    fi
+
+    return 1
+}
+
+if [[ -z "${PKG}" ]]; then
+    logger -l error "-p|--pkg is required" ${LOG_ARGS}
+    exit 1
+fi
+
+if [[ -z "${MGR}" ]]; then
+    if __check_all; then
+        exit 0
+    fi
+
+    exit 1
+fi
+
+case "${MGR}" in
+    apt)
+      __check_dpkg
+      ;;
+    flatpak)
+      __check_flatpak
+      ;;
+    snap)
+      __check_snap
+      ;;
+    *)
+      logger -l error "-m|--mgr must be one of 'apt|flatpak|snap', not ${MGR}" ${LOG_ARGS}
+      exit 2
+      ;;
+esac
+
+exit $?
+
