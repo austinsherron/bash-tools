@@ -728,4 +728,9 @@ get_strong_ciphersuites_for() {
     fi
 }
 
+if which cargo > /dev/null 2>&1; then
+    echo "[INFO] cargo is already installed; exiting"
+    exit 0
+fi
+
 main "$@" || exit 1

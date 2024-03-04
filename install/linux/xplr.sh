@@ -5,6 +5,11 @@ set -Eeuo pipefail
 source /etc/profile.d/shared_paths.sh
 
 
+if which xplr &> /dev/null; then
+    echo "xplr is already installed; exiting"
+    exit 0
+fi
+
 PLATFORM="linux"  # one of ["linux"|"linux-musl"|"macos"]
 PKG="xplr-${PLATFORM}.tar.gz"
 OUT="xplr-${PLATFORM}"

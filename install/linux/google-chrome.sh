@@ -5,6 +5,11 @@ set -Eeuo pipefail
 # source: https://itsfoss.com/install-chrome-ubuntu/
 
 
+if which google-chrome &> /dev/null; then
+    echo "google-chrome is already installed; exiting"
+    exit 0
+fi
+
 PKG="google-chrome-stable_current_amd64.deb"
 
 # download

@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # source: https://www.speedtest.net/apps/cli
 
 
-if which speedtest > /dev/null; then
+if which speedtest &> /dev/null; then
     echo "speedtest is already installed; exiting"
     exit 0
 fi

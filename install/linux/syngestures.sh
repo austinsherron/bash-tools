@@ -3,10 +3,10 @@
 set -Eeuo pipefail
 
 
-# if which syngestures &> /dev/null; then
-#     echo "[INFO] syngestures already installed; exiting"
-#     exit 0
-# fi
+if which syngestures &> /dev/null; then
+    echo "[INFO] syngestures already installed; exiting"
+    exit 0
+fi
 
 if ! which cargo &> /dev/null; then
     echo "[ERROR] cargo must be installed to continue"

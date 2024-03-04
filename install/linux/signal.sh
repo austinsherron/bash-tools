@@ -6,7 +6,7 @@ set -Eeuo pipefail
 
 
 # 0. Check if already installed (added by me, Austin)
-if [[ "$(which signal-desktop)" ]]; then
+if which signal-desktop &> /dev/null; then
     # cleanup may still be necessary
     rm -f signal-desktop-keyring.gpg
     echo "signal is already installed; exiting"

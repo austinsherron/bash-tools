@@ -3,6 +3,11 @@
 set -Eeuo pipefail
 
 
+if dpkg -s librewolf &> /dev/null; then
+    echo "librewolf is already installed; exiting"
+    exit 0
+fi
+
 sudo apt update -y && sudo apt install -y wget gnupg lsb-release apt-transport-https ca-certificates
 
 distro=$(if echo " una bookworm vanessa focal jammy bullseye vera uma " | grep -q " $(lsb_release -sc) "; then echo $(lsb_release -sc); else echo focal; fi)

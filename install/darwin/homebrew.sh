@@ -8,7 +8,7 @@ PKG="Homebrew-${VERSION}.pkg"
 URL="https://github.com/Homebrew/brew/releases/download/${VERSION}/${PKG}"
 DST="${HOME}/Downloads"
 
-if which brew > /dev/null; then
+if which brew &> /dev/null; then
     echo "Homebrew is already installed"
     exit 0
 fi

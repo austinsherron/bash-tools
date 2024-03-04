@@ -10,7 +10,7 @@ set -Eeuo pipefail
 
 VERSION="2.43.0"
 
-if [[ "$(git --version | awk '{print $3}')" = "${VERSION}" ]]; then
+if which git &> /dev/null && [[ "$(git --version | awk '{print $3}')" == "${VERSION}" ]]; then
     echo "git already installed at version ${VERSION}; exiting"
     exit 0
 fi

@@ -483,6 +483,18 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+
+installed_version() {
+    starship --version | head -1 | awk '{print $2}'
+}
+
+VERSION="1.16.0"
+
+if which starship > /dev/null 2>&1 && [ "$(installed_version)" = "${VERSION}" ]; then
+    echo "starship already installed at version ${VERSION}; exiting"
+    exit 0
+fi
+
 TARGET="$(detect_target "${ARCH}" "${PLATFORM}")"
 
 is_build_available "${ARCH}" "${PLATFORM}" "${TARGET}"

@@ -7,6 +7,12 @@ set -Eeuo pipefail
 
 # note: script must be run w/ `sudo`
 
+
+if which dropbox &> /dev/null; then
+    echo "[INFO] dropbox is already installed; exiting"
+    exit 0
+fi
+
 URL="https://linux.dropbox.com/packages/dropbox.py"
 OUT="${EXTERNAL_PKGS}/dropbox"
 DROPBOX_PATH="${OUT}/dropbox"
@@ -27,11 +33,6 @@ fi
 
 chmod +x "${DROPBOX_PATH}"
 
-if [[ ! "$(which dropbox)" ]]; then
-    [[ ! "$(which deploy)" ]] && echo "Error: missing 'deploy' dependency; exiting" && exit 1
-    echo "deploying dropbox"
-    deploy -s "${EXTERNAL_PKGS}" dropbox
-else
-    echo "dropbox already deployed"
-fi
+echo "deploying dropbox"
+deploy -s "${EXTERNAL_PKGS}" dropbox
 

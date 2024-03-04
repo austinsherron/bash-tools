@@ -5,6 +5,11 @@ set -Eeuo pipefail
 # source: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
 
 
+if which gh &> /dev/null; then
+    echo "[INFO] gh is already installed; exiting"
+    exit 0
+fi
+
 curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
  |  sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
  && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \

@@ -22,6 +22,11 @@ PUB_KEY_ID="E222AA02"
 PUB_KEY="${PUB_KEY_ID}.asc"
 PUB_KEY_URL=${BASE_URL}/${PUB_KEY}
 
+if dpkg -s "${APP}" &> /dev/null; then
+    echo "[INFO] ${APP} is already installed; exiting"
+    exit 0
+fi
+
 # exit early if the application is already installed
 [[ "$(dpkg -S "${APP}" 2>/dev/null)" ]] && echo "${APP} already installed; exiting" && exit 0
 # create output dir, if necessary
