@@ -6,7 +6,7 @@ set -Eeuo pipefail
 
 
 if dpkg -s gnome-tweaks &> /dev/null; then
-    echo "gnome-tweaks is already installed; exiting"
+    echo "[INFO] gnome-tweaks is already installed; exiting"
     exit 0
 fi
 

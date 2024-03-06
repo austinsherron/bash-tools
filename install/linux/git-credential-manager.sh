@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 
-# NOTE: this is duplicated in the dotfiles repo: we need to install git-credential-manager 
+# NOTE: this is duplicated in the dotfiles repo: we need to install git-credential-manager
 # to clone this repo
 
 PKG="git-credential-manager"
@@ -13,7 +13,7 @@ URL="https://github.com/git-ecosystem/${PKG}/releases/download/v${VERSION}/${OUT
 CHECKSUM="d65a166f6fc3d6638b356b84b4e1274a95352455f448b06a34926bf6568cd995"
 
 if which ${PKG} &> /dev/null; then
-    echo "${PKG} is already installed; exiting"
+    echo "[INFO] ${PKG} is already installed; exiting"
     exit 0
 fi
 

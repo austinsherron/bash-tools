@@ -18,17 +18,17 @@ OUT="${EXTERNAL_PKGS}/dropbox"
 DROPBOX_PATH="${OUT}/dropbox"
 
 if [[ ! -d "${OUT}" ]]; then
-    echo "dropbox dir doesn't exist in external packages; creating"
+    echo "[INFO] dropbox dir doesn't exist in external packages; creating"
     mkdir -p "${OUT}"
 else
-    echo "dropbox dir already exists in external packages"
+    echo "[INFO] dropbox dir already exists in external packages"
 fi
 
 if [[ ! -f "${DROPBOX_PATH}" ]]; then
-    echo "dropbox executable doesn't exist in dropbox external package dir; downloading"
+    echo "[INFO] dropbox executable doesn't exist in dropbox external package dir; downloading"
     curl "${URL}" -o "${DROPBOX_PATH}"
 else
-    echo "dropbox executable already exists in dropbox external package dir"
+    echo "[INFO] dropbox executable already exists in dropbox external package dir"
 fi
 
 chmod +x "${DROPBOX_PATH}"

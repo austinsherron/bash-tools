@@ -9,12 +9,12 @@ URL="https://github.com/Homebrew/brew/releases/download/${VERSION}/${PKG}"
 DST="${HOME}/Downloads"
 
 if which brew &> /dev/null; then
-    echo "Homebrew is already installed"
+    echo "[INFO] Homebrew is already installed"
     exit 0
 fi
 
 if [[ -f "${DST}/${PKG}" ]]; then
-    echo "${DST}/${PKG} already exists"
+    echo "[INFO] ${DST}/${PKG} already exists"
     exit 0
 fi
 

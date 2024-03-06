@@ -6,7 +6,7 @@ set -Eeuo pipefail
 
 
 if which lazygit &> /dev/null; then
-    echo "lazygit is already installed; exiting"
+    echo "[INFO] lazygit is already installed; exiting"
     exit 0
 fi
 

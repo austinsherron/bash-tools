@@ -6,7 +6,7 @@ set -Eeuo pipefail
 
 
 if dpkg -s zoom &> /dev/null; then
-    echo "zoom is already installed; exiting"
+    echo "[INFO] zoom is already installed; exiting"
     exit 0
 fi
 
@@ -14,14 +14,7 @@ PKG="zoom_amd64.deb"
 VERSION="5.16.2.8828"
 URL="https://zoom.us/client/${VERSION}/${PKG}"
 
-if [[ "$(which zoom)" ]]; then
-    # cleanup may still be necessary
-    rm -f "${PKG}"
-    echo "zoom is already installed; exiting"
-    exit 0
-fi
-
-[[ -f "${PKG}" ]] && echo "${PKG} already downloaded" || wget "${URL}"
+[[ -f "${PKG}" ]] && echo "[INFO] ${PKG} already downloaded" || wget "${URL}"
 sudo apt install -y ./${PKG}
 
 rm -f "${PKG}"

@@ -8,7 +8,7 @@ source /etc/profile.d/shared_paths.sh
 
 
 if which s &> /dev/null; then
-    echo "s is already installed"
+    echo "[INFO] s is already installed"
     exit 0
 fi
 

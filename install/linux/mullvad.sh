@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 
 if dpkg -s mullvad-vpn &> /dev/null; then
-    echo "mullvad-vpn is already installed; exiting"
+    echo "[INFO] mullvad-vpn is already installed; exiting"
     exit 0
 fi
 

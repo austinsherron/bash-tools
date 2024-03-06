@@ -6,7 +6,7 @@ set -Eeuo pipefail
 
 
 if dpkg -s guake &> /dev/null; then
-    echo "guake is already installed; exiting"
+    echo "[INFO] guake is already installed; exiting"
     exit 0
 fi
 

@@ -28,7 +28,7 @@ if dpkg -s "${APP}" &> /dev/null; then
 fi
 
 # exit early if the application is already installed
-[[ "$(dpkg -S "${APP}" 2>/dev/null)" ]] && echo "${APP} already installed; exiting" && exit 0
+[[ "$(dpkg -S "${APP}" 2>/dev/null)" ]] && echo "[INFO] ${APP} already installed; exiting" && exit 0
 # create output dir, if necessary
 [[ -d "${OUT}" ]] || mkdir -p "${OUT}"
 # download package, if necessary
@@ -40,7 +40,7 @@ fi
 # automating that process
 [[ "$(gpg --list-public-keys "${PUB_KEY_ID}")" ]] || wget "${PUB_KEY_URL}" | gpg --import
 
-# make executable 
+# make executable
 sudo chmod +x "${PKG_OUT}"
 # install, if necessary
 sudo apt install -y "${PKG_OUT}"

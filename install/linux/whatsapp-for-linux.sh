@@ -11,7 +11,7 @@ APP_IMAGE="${PKG}.AppImage"
 URL="https://github.com/eneshecan/whatsapp-for-linux/releases/download/v${VERSION}/${APP_IMAGE}"
 
 if ls ${ADMIN_HOME}/Applications/${PKG}*.AppImage &> /dev/null; then
-    echo "${APP_IMAGE} exists and appears to be integrated; exiting"
+    echo "[INFO] ${APP_IMAGE} exists and appears to be integrated; exiting"
     exit 0
 fi
 

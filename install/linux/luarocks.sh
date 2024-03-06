@@ -12,7 +12,7 @@ DIR="luarocks-${VERSION}"
 PKG="${DIR}.tar.gz"
 
 if which luarocks &> /dev/null && [[ "$(installed-version)" == "${VERSION}" ]]; then
-    echo "luarocks already installed at version ${VERSION}; exiting"
+    echo "[INFO] luarocks already installed at version ${VERSION}; exiting"
     exit 0
 fi
 

@@ -6,7 +6,7 @@ set -Eeuo pipefail
 
 
 if which google-chrome &> /dev/null; then
-    echo "google-chrome is already installed; exiting"
+    echo "[INFO] google-chrome is already installed; exiting"
     exit 0
 fi
 

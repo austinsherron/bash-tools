@@ -6,7 +6,7 @@ source /etc/profile.d/shared_paths.sh
 
 
 if which tdrop &> /dev/null; then
-    echo "tdrop already installed; exiting"
+    echo "[INFO] tdrop already installed; exiting"
     exit 0
 fi
 

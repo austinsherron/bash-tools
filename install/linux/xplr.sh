@@ -6,7 +6,7 @@ source /etc/profile.d/shared_paths.sh
 
 
 if which xplr &> /dev/null; then
-    echo "xplr is already installed; exiting"
+    echo "[INFO] xplr is already installed; exiting"
     exit 0
 fi
 
@@ -23,7 +23,7 @@ OUT="xplr-${PLATFORM}"
 
 # validate extracts
 if [[ ! -f "${OUT}/xplr" ]]; then
-    echo "No 'xplr' binary found in pkg extracts; unrecoverable error"
+    echo "[ERROR] No 'xplr' binary found in pkg extracts; unrecoverable error"
     exit 1
 fi
 

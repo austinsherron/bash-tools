@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 
 if dpkg -s tlp &> /dev/null; then
-    echo "tlp is already installed; exiting"
+    echo "[INFO] tlp is already installed; exiting"
     exit 0
 fi
 

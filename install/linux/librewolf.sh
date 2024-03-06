@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 
 if dpkg -s librewolf &> /dev/null; then
-    echo "librewolf is already installed; exiting"
+    echo "[INFO] librewolf is already installed; exiting"
     exit 0
 fi
 

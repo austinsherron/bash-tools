@@ -7,7 +7,7 @@ set -Eeuo pipefail
 
 
 if dpkg -s ungoogled-chromium &> /dev/null; then
-    echo "ungoogled-chromium is already installed; exiting"
+    echo "[INFO] ungoogled-chromium is already installed; exiting"
     exit 0
 fi
 

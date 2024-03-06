@@ -6,7 +6,7 @@ set -Eeuo pipefail
 
 
 if dpkg -s i2p i2pd &> /dev/null; then
-    echo "i2p and i2pd are already installed; exiting"
+    echo "[INFO] i2p and i2pd are already installed; exiting"
     exit 0
 fi
 
@@ -14,6 +14,6 @@ fi
 sudo apt-add-repository -y ppa:i2p-maintainers/i2p
 # for i2pd (i2p daemon)
 sudo add-apt-repository -y ppa:purplei2p/i2pd
-sudo apt update -y 
+sudo apt update -y
 sudo apt install -y i2p i2pd
 

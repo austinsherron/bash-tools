@@ -12,7 +12,7 @@ DIR="lua-${VERSION}"
 PKG="${DIR}.tar.gz"
 
 if which lua &> /dev/null && [[ "$(installed-version)" == "${VERSION}" ]]; then
-    echo "lua already installed at version ${VERSION}; exiting"
+    echo "[INFO] lua already installed at version ${VERSION}; exiting"
     exit 0
 fi
 
@@ -22,7 +22,7 @@ tar -zxf ${PKG}
 cd ${DIR}
 
 make linux test
-sudo make install 
+sudo make install
 
 cd .. && rm -rf ${DIR} ${PKG}
 

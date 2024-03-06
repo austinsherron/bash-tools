@@ -9,7 +9,7 @@ set -Eeuo pipefail
 if which signal-desktop &> /dev/null; then
     # cleanup may still be necessary
     rm -f signal-desktop-keyring.gpg
-    echo "signal is already installed; exiting"
+    echo "[INFO] signal is already installed; exiting"
     exit 0
 fi
 

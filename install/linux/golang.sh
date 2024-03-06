@@ -15,7 +15,7 @@ PKG="go${VERSION}.linux-amd64.tar.gz"
 OUT="golang-${VERSION}"
 
 if which go &> /dev/null && [[ "$(installed-version)" == "${VERSION}" ]]; then
-    echo "go already installed at version ${VERSION}; exiting"
+    echo "[INFO] go already installed at version ${VERSION}; exiting"
     exit 0
 fi
 
@@ -30,7 +30,7 @@ echo "${CHECKSUM} ${PKG}" | sha256sum --check --status
 
 # validate extracts
 if [[ ! -d "${OUT}/go" ]]; then
-    echo "No 'go' dir found in pkg extracts; unrecoverable error"
+    echo "[ERROR] no 'go' dir found in pkg extracts; unrecoverable error"
     exit 1
 fi
 

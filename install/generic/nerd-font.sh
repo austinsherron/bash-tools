@@ -85,16 +85,16 @@ required_param "-f|--file" "${FILE_NAME}"
 FULL_URL="${URL}/${FONT_NAME}${STYLE}/${FILE_NAME}"
 
 if [[ "${VERBOSE}" == "true" ]]; then
-    echo "INFO: url='${FULL_URL}'"
+    echo "[INFO] url='${FULL_URL}'"
 fi
 
 if [[ ! -d "${FONT_DIR}" ]]; then
-    echo "ERROR: Font directory does not exist (${FONT_DIR})"
+    echo "[ERROR] Font directory does not exist (${FONT_DIR})"
     exit 1
 fi
 
 if [[ ! ${FULL_URL} == *.ttf ]] && [[ ! ${FULL_URL} == *.otf ]]; then
-    echo "ERROR: URL must reference a font file (*.ttf|*.otf)"
+    echo "[ERROR] URL must reference a font file (*.ttf|*.otf)"
     exit 1
 fi
 
