@@ -5,6 +5,21 @@ set -eu
 # source: ??
 
 
+# NOTE: added by me (Austin) to avoid needless re-execution
+
+installed_version() {
+    starship --version | head -1 | awk '{print $2}'
+}
+
+VERSION="1.17.1"
+
+if which starship > /dev/null 2>&1 && [ "$(installed_version)" = "${VERSION}" ]; then
+    echo "starship already installed at version ${VERSION}; exiting"
+    exit 0
+fi
+
+# NOTE: end
+
 printf '\n'
 
 BOLD="$(tput bold 2>/dev/null || printf '')"
@@ -483,17 +498,6 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-
-installed_version() {
-    starship --version | head -1 | awk '{print $2}'
-}
-
-VERSION="1.16.0"
-
-if which starship > /dev/null 2>&1 && [ "$(installed_version)" = "${VERSION}" ]; then
-    echo "starship already installed at version ${VERSION}; exiting"
-    exit 0
-fi
 
 TARGET="$(detect_target "${ARCH}" "${PLATFORM}")"
 
