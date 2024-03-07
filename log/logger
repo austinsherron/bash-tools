@@ -2,6 +2,7 @@
 
 set -Eeuo pipefail
 
+source /etc/profile.d/shared_paths.sh
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
