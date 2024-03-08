@@ -13,10 +13,8 @@ help() {
 cat <<help
 DESCRIPTION
 
-    A script that uses rsync to perform incremental backups, or snapshots of a
-    source, -s, to a destination, -d. Default rsync flags are "aAX". Additional
-    flags can be passed to rsync via -a. A file containing filters can be passed
-    to rsync via -f along with a keyword indicating the rsync filter type via -t.
+    A script that uses rsync to perform incremental backups, or snapshots of a source, -s, to a destination, -d. Default rsync flags are "aAX". Additional flags can be 
+    passed to rsync via -a. A file containing filters can be passed to rsync via -f along with a keyword indicating the rsync filter type via -t.
 
 USAGE
 
@@ -26,15 +24,11 @@ OPTIONS
 
     -s, --src           required; the path to the dir being backed up
     -d, --dst           required; the path to the parent of the snapshot dir
-    -t, --filter-type   optional, must be passed w/ -f; the type of rsync filters
-                        to apply
-    -f, --filter-file   optional, must be passed w/ -t; a path to a file that
-                        contains rsync filters
+    -t, --filter-type   optional, must be passed w/ -f; the type of rsync filters to apply
+    -f, --filter-file   optional, must be passed w/ -t; a path to a file that contains rsync filters
     -a, --flags         optional; additional rsync flags
-    -e, --extra         optional; anything extra to add to the rsync command, after 
-                        flags
-    --dry-run           optional; indicates that the script should print hypothetical
-                        results to the console, but make no state changes
+    -e, --extra         optional; anything extra to add to the rsync command, after flags
+    --dry-run           optional; indicates that the script should print hypothetical results to the console, but make no state changes
     -h, --help          display this message
 help
 }
@@ -97,6 +91,7 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
 
 ## validate args
 
@@ -174,7 +169,6 @@ cleanup() {
 
     ln -s "${LATEST_SNAPSHOT}" "${LATEST_LINK}"
 }
-
 
 ## exec
 

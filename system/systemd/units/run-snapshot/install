@@ -21,3 +21,6 @@ cp -r "${CONFIG_ROOT_PUB}/snapshot/" "${SYS_CONFIG}/"
 # install systemd system units
 install-units -d "${TOOLS_ROOT}/system/systemd/units/run-snapshot" -o system -t timer
 
+systemctl enable run-snapshot.service
+systemctl start run-snapshot.service
+

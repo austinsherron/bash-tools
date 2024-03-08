@@ -12,3 +12,6 @@ cp "${TOOLS_ROOT}"/system/systemd/units/mv-stg-backups/mv-stg-backups /usr/local
 # install systemd user units
 install-units -d "${TOOLS_ROOT}"/system/systemd/units/mv-stg-backups -o user -t path
 
+systemctl --user enable mv-stg-backups.service
+systemctl --user start mv-stg-backups.service
+
