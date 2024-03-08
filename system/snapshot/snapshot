@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2002
 
 set -Eeuo pipefail
 
@@ -13,9 +14,8 @@ help() {
 cat <<help
 DESCRIPTION
 
-    A script that orchestrates incremental backups, or "snapshots". Snapshot are
-    parameterized by parameters provided via a yaml config file passed with the
-    -c flag. Config files are of the following form:
+    A script that orchestrates incremental backups, or "snapshots". Snapshot are parameterized by parameters provided via a yaml config file passed with the -c flag. 
+    Config files are of the following form:
 
         path: "/path/to/take-snapshot"
         src: "/path/to/src/of/snapshot"
@@ -27,8 +27,7 @@ DESCRIPTION
         extra: anything additional to pass to the rsync command (optional)
         keep: "keep # snapshots" (optional)
 
-    If no file is passed via -c, the script will look for the file in the following
-    locations, in order:
+    If no file is passed via -c, the script will look for the file in the following locations, in order:
 
     * ~/.config/snapshot/config.yaml
     * /usr/local/etc/snapshot/config.yaml
@@ -41,10 +40,8 @@ USAGE
 
 OPTIONS
 
-    -c, --config    optional; a path to a yaml file that parameterizes snapshots;
-                    if not provided, the script tries to use multiple possible defaults
-    --dry-run       optional; indicates that the script should print hypotheical
-                    results to the console, but make no state changes
+    -c, --config    optional; a path to a yaml file that parameterizes snapshots; if not provided, the script tries to use multiple possible defaults
+    --dry-run       optional; indicates that the script should print hypotheical results to the console, but make no state changes
     -h, --help      display this message
 help
 }
@@ -109,12 +106,12 @@ fi
 # build up command based on presence of args in config
 
 CMD="${SCRIPT_PATH}"
-CMD="${CMD} $([[ -z ${SOURCE_PATH}     ]] && echo "" || echo "-s ${SOURCE_PATH}")"
-CMD="${CMD} $([[ -z ${SNAPSHOT_PARENT} ]] && echo "" || echo "-d ${SNAPSHOT_PARENT}")"
-CMD="${CMD} $([[ -z ${FILTER_TYPE}     ]] && echo "" || echo "-t ${FILTER_TYPE}")"
-CMD="${CMD} $([[ -z ${FILTER_FILE}     ]] && echo "" || echo "-f ${FILTER_FILE}")"
-CMD="${CMD} $([[ -z ${EXTRA_FLAGS}     ]] && echo "" || echo "-a ${EXTRA_FLAGS}")"
-CMD="${CMD} $([[ -z ${EXTRA}           ]] && echo "" || echo "-e ${EXTRA}")"
+CMD="${CMD} $([[ -z ${SOURCE_PATH}      ]] && echo "" || echo "-s ${SOURCE_PATH}")"
+CMD="${CMD} $([[ -z ${SNAPSHOT_PARENT}  ]] && echo "" || echo "-d ${SNAPSHOT_PARENT}")"
+CMD="${CMD} $([[ -z ${FILTER_TYPE}      ]] && echo "" || echo "-t ${FILTER_TYPE}")"
+CMD="${CMD} $([[ -z ${FILTER_FILE}      ]] && echo "" || echo "-f ${FILTER_FILE}")"
+CMD="${CMD} $([[ -z ${EXTRA_FLAGS}      ]] && echo "" || echo "-a ${EXTRA_FLAGS}")"
+CMD="${CMD} $([[ -z ${EXTRA}            ]] && echo "" || echo "-e ${EXTRA}")"
 CMD="${CMD} $([[ "${DRY_RUN}" == "true" ]] && echo "--dry-run" || echo "")"
 
 # exec
@@ -135,7 +132,7 @@ if [[ "${NUM_SNAPSHOTS}" -le "${KEEP}" ]]; then
     exit 0
 fi
 
-let "N_TO_DELETE=$NUM_SNAPSHOTS - $KEEP"
+N_TO_DELETE="(( $NUM_SNAPSHOTS - $KEEP ))"
 
 for d in ${SNAPSHOT_PARENT}/$(echo "${SNAPSHOT_LS}" | head "-${N_TO_DELETE}"); do
     if [[ "${DRY_RUN}" == "true" ]]; then
