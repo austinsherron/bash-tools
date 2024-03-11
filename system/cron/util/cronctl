@@ -6,7 +6,7 @@ source /etc/profile.d/shared_paths.sh
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="usage: crontabctl -s -c [-u] [-q] [-d] [-l path] [-m|--strict] [-v]"
+USAGE="usage: cronctl -s -c [-u] [-q] [-d] [-l path] [-m|--strict] [-v]"
 
 usage() {
     echo "${USAGE}"
