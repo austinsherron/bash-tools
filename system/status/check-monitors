@@ -47,6 +47,9 @@ COUNT=""
 EXTERNAL=""
 MECHANISM=""
 
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="status"
+export ULOGGER_PREFIX="monitors"
+
 while [[ $# -gt 0 ]]; do
   case $1 in
     -c|--count)
@@ -62,6 +65,10 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
+    -v|--verbose)
+      export ULOGGER_VERBOSE="true"
+      shift
+      ;;
     -h|--help)
       help
       exit 0
@@ -75,18 +82,18 @@ done
 
 # -c can't be used w/ -e or -m
 if [[ -n "${COUNT}" ]] && [[ -n "${EXTERNAL}" || -n "${MECHANISM}" ]]; then
-    echo "[ERROR] -c|--count cannot be used w/ -e|--external or -m|--mechanism"
+    ulogger error "-c|--count cannot be used w/ -e|--external or -m|--mechanism"
     exit 1
 fi
 
 if [[ -n "${MECHANISM}" ]] && [[ -z "${EXTERNAL}" ]] && [[ -z "${COUNT}" ]]; then
-    echo "[ERROR] -m|--mechanism should only be used w/ -e|--external"
+    ulogger error "-m|--mechanism should only be used w/ -e|--external"
     exit 1
 fi
 
 # if -m, ensure it's valid
 if [[ -n "${MECHANISM}" ]] && [[ -z "${HOW[${MECHANISM}]+x}" ]]; then
-    echo "[ERROR] -m|--mechanism must be one of {${!HOW[*]}}, not \"${MECHANISM}\""
+    ulogger error "-m|--mechanism must be one of {${!HOW[*]}}, not \"${MECHANISM}\""
     exit 1
 fi
 
@@ -95,11 +102,13 @@ if [[ -n "${EXTERNAL}" ]] && [[ -z "${MECHANISM}" ]]; then
     MECHANISM="rc"
 fi
 
+# in case DISPLAY isn't set in the calling env
+[[ -z "${DISPLAY+x}" ]] && export DISPLAY=":0.0"
 mapfile -t REPORT < <(xrandr --listactivemonitors | grep -v "Monitors" | awk '{ print $4}' )
 MONITOR_COUNT="${#REPORT[@]}"
 
 if [[ "${#REPORT[@]}" -eq 0 ]]; then
-    echo "[ERROR] Unable to retrieve monitor report"
+    ulogger error "Unable to retrieve monitor report"
     exit 1
 fi
 

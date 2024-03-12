@@ -3,7 +3,6 @@
 set -Eeuo pipefail
 
 
-#
 # NOTE: must be run w/ sudo
 USAGE="usage: disable-wakeup [-p path] {-d device}"
 
@@ -40,11 +39,9 @@ help
 
 declare -A WAKEUP_DEVICES=()
 DRY_RUN=""
-VERBOSE=""
 
-log() {
-    [[ "${VERBOSE}" == "true" ]] && echo "[INFO] ${1}"
-}
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="cron"
+export ULOGGER_PREFIX="wakeup"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -58,7 +55,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -v|--verbose)
-      VERBOSE="true"
+      export ULOGGER_VERBOSE="true"
       shift
       ;;
     -h|--help)
@@ -77,21 +74,21 @@ ENABLED="$(grep "\*enabled" /proc/acpi/wakeup || echo "")"
 ENABLED="$(echo "${ENABLED}" | cut -f 1)"
 
 if [[ -z "${ENABLED}" ]]; then
-    log "no enabled devices found"
+    ulogger info "no enabled devices found"
     exit 0
 fi
 
 ENABLED_STR="$(echo "${ENABLED}" | tr '\n' ', ')"
 ENABLED_STR="${ENABLED_STR:0:-2}"
-log "found enabled devices=${ENABLED_STR}"
+ulogger info "found enabled devices=${ENABLED_STR}"
 
 echo "${ENABLED}" | cut -f 1 | 
     while read -r device; do
         if [[ "${#WAKEUP_DEVICES[@]}" -eq 0 ]] || [[ -n "${WAKEUP_DEVICES[$device]+x}" ]]; then
-            log "disabling device=${device}"
+            ulogger info "disabling device=${device}"
             [[ -z "${DRY_RUN}" ]] && echo "${device}" > /proc/acpi/wakeup
         else
-            log "${device} not specified via -d|--device; skipping"
+            ulogger info "${device} not specified via -d|--device; skipping"
         fi
     done
 

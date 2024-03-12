@@ -16,7 +16,7 @@ DESCRIPTION
 
     Script that enables wakeup if the computer is plugged into power and connected to external monitors (i.e.: docked) and disables wakeup if either of those things isn't true.
 
-    Intended to run as a root user cron.
+    Intended to run as a root user cron, otherwise, must be run w/ sudo.
 
 USAGE
 
@@ -24,13 +24,21 @@ USAGE
 
 OPTIONS
 
-    -h, --help          display this message
+    -v, --verbose   optional; if present, the script will print to stdout messages about the script's progress
+    -h, --help      display this message
 help
 }
 
 
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="cron"
+export ULOGGER_PREFIX="wakeup"
+
 while [[ $# -gt 0 ]]; do
   case $1 in
+    -v|--verbose)
+      export ULOGGER_VERBOSE="true"
+      shift
+      ;;
     -h|--help)
       help
       exit 0
@@ -43,9 +51,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 # FIXME: why does this only seem to work when --verbose is used?
-if check-monitors -e && check-power -s ac; then
-    enable-wakeup --verbose
+if check-monitors -e && check-power -s ac; then 
+    ulogger info "enabling wakeup"
+    enable-wakeup
 else
-    disable-wakeup --verbose
+    ulogger info "disabling wakeup"
+    disable-wakeup
 fi
 
