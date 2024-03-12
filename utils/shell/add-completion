@@ -22,8 +22,8 @@ USAGE
 OPTIONS
 
     -p, --path          path to the completion script to add
-    -d, --dir           optional, defaults to the value of the "COMPLETION_DIR" env var; path to the directory to which to add the completion script; this should be a directory that's sourced by 
-                        bash-completion
+    -d, --dir           optional, defaults to the value of the "COMPLETION_DIR" env var; path to the directory to which to add the completion script; this should be a 
+                        directory that's sourced by bash-completion
     -k, --keep          optional; if present, keeps the original completion script provided via -p|--path
     -f, --force         optional; if present, overwrites any existing completion script in the target dir that collides with the script being added
     --dry-run           optional; if present, no state changes are made
@@ -38,12 +38,9 @@ USER_COMPLETION_DIR=""
 KEEP=""
 FORCE=""
 DRY_RUN=""
-VERBOSE=""
 
-log() {
-    [[ "${VERBOSE}" == "true" ]] && echo "[${1}] ${2}"
-    return 0
-}
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="shell"
+export ULOGGER_PREFIX="cmp"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -70,7 +67,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -v|--verbose)
-      VERBOSE="true"
+      export ULOGGER_VERBOSE="true"
       shift
       ;;
     -h|--help)
@@ -87,27 +84,27 @@ done
 
 # validate that a completion script was provided and that it's a valid file
 if [[ -z "${COMPLETION_FILE}" ]]; then
-    echo "-p|--path is required"
+    ulogger error "-p|--path is required" -p "S > SHELL" 
     exit 1
 fi
 
 if [[ ! -f "${COMPLETION_FILE}" ]]; then
-    echo "-p|--path must refer to a valid file"
+    ulogger error "-p|--path must refer to a valid file" -p "UTILS > SHELL" 
     exit 1
 fi
 
 # validate that there's some completion dir available
 if [[ -z "${USER_COMPLETION_DIR}" ]] && [[ -z "${COMPLETION_DIR+x}" ]]; then
-    echo "[ERROR] no value specified for -d|--dir and COMPLETION_DIR env var is unset"
-    echo "[ERROR] unable to determine destination for completion file"
+    ulogger error "no value specified for -d|--dir and COMPLETION_DIR env var is unset" -p "UTILS > SHELL" 
+    ulogger error "unable to determine destination for completion file" -p "UTILS > SHELL" 
     exit 1
 elif [[ -z "${USER_COMPLETION_DIR}" ]]; then
-    log "INFO" "falling back to completion dir env var='${COMPLETION_DIR}'"
+    ulogger info "falling back to completion dir env var='${COMPLETION_DIR}'"
     USER_COMPLETION_DIR="${COMPLETION_DIR}"
 fi
 
 if [[ ! -d "${USER_COMPLETION_DIR}" ]]; then
-    echo "[ERROR] completion dir is not a valid directory (path='${USER_COMPLETION_DIR}')"
+    ulogger error "completion dir is not a valid directory (path='${USER_COMPLETION_DIR}')"
     exit 1
 fi
 
@@ -115,22 +112,22 @@ DST_PATH="${USER_COMPLETION_DIR}/$(basename "${COMPLETION_FILE}")"
 
 # fail if the specified completion, unless the caller explicitly asked to overwrite it
 if [[ -f "${DST_PATH}" ]] && [[ -z "${FORCE}" ]]; then
-    echo "[ERROR] completion file '${DST_PATH}' already exists; exiting"
+    ulogger error "completion file '${DST_PATH}' already exists; exiting"
     exit 1
 elif [[ -f "${DST_PATH}" ]]; then
-    echo "[WARN] completion file '${DST_PATH}' already exists"
-    log "INFO" "-f|--force option detected: the existing file at '${DST_PATH}' will be overwritten"
+    ulogger warn "completion file '${DST_PATH}' already exists"
+    ulogger info "-f|--force option detected: the existing file at '${DST_PATH}' will be overwritten"
 fi
 
-log "INFO" "copying '${COMPLETION_FILE}' to '${COMPLETION_DIR}'"
+ulogger info "copying '${COMPLETION_FILE}' to '${COMPLETION_DIR}'"
 
 [[ -z "${DRY_RUN}" ]] && cp -f ${COMPLETION_FILE} ${USER_COMPLETION_DIR}
 
 # delete the source file, unless the caller explicitly asked to keep it
 if [[ -z "${KEEP}" ]]; then
-    log "INFO" "removing '${COMPLETION_FILE}'"
+    ulogger info "removing '${COMPLETION_FILE}'"
     [[ -z "${DRY_RUN}" ]] && rm ${COMPLETION_FILE}
 else
-    log "INFO" "-k|--keep option detected: preserving '${COMPLETION_FILE}'"
+    ulogger info "-k|--keep option detected: preserving '${COMPLETION_FILE}'"
 fi
 

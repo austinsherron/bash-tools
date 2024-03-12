@@ -55,6 +55,9 @@ declare -A HOW=(
 STATUS=""
 MECHANISM=""
 
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="status"
+export ULOGGER_PREFIX="power"
+
 while [[ $# -gt 0 ]]; do
   case $1 in
     -s|--status)
