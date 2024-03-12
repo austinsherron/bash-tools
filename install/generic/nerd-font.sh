@@ -6,7 +6,7 @@ source /etc/profile.d/shared_paths.sh
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="usage: nerd-font -n name [-s style] -f file [-d dirpath]"
+USAGE="usage: nerd-font.sh -n name [-s style] -f file [-d dirpath]"
 
 usage() {
     echo "${USAGE}"
@@ -79,6 +79,7 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
 
 required_param "-n|--name" "${FONT_NAME}"
 required_param "-f|--file" "${FILE_NAME}"
