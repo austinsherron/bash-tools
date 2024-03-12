@@ -31,7 +31,7 @@ This repo contains--or is intended to contain--production ready scripts that I r
 
 - [x] Snapshot (backup) system for user files (ideally for arbitrary files)
 - [ ] Formalize git functions by creating scripts for them/add scripts for oft-repeated git tasks
-- [ ] (Nerd) Font installation: takes a font name as a param, checks if it's already installed, installs it if not
+- [x] (Nerd) Font installation: takes a font name as a param, checks if it's already installed, installs it if not
 - [ ] Wrapper for xplr that gives callers the option to do something useful w/ the selected item (i.e.: cd into it, open it, edit it, delete it, etc.)
 - [ ] Add more sophisticated TUI for snapshot
 - [ ] Add standalone script script for restoration
@@ -39,10 +39,11 @@ This repo contains--or is intended to contain--production ready scripts that I r
 ### Tasks
 
 - [ ] Write unit tests
+- [ ] Migrate all tools/scripts to use ulogger
 
 ### Fixes
 
-- [ ] Fix 2-fa (issue caused by the fact that's it's dependent on an alias)
+- [x] Fix 2-fa (issue caused by the fact that's it's dependent on an alias)
 - [ ] Remove exec perms from run-snapshot and mv-stg-backups
 
 ## Fanciful Ideas
