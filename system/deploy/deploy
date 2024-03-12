@@ -16,7 +16,7 @@ cat <<help
 DESCRIPTION
 
     A thin wrapper around stow for installing/removing internal and manually installed packages.
-    
+
 USAGE
 
     ${USAGE}
@@ -92,7 +92,7 @@ done
 if [[ -z "${TGT}" ]] && [[ -z "${LOCAL_BIN+x}" ]]; then
     echo "[WARN] -t|--target not provided and LOCAL_BIN not set; falling back to stow default"
 elif [[ -z "${TGT}" ]]; then
-    TGT="${SYS_BIN}"
+    TGT="${LOCAL_BIN}"
 fi
 
 if [[ "${#PKGS[@]}" -lt 1 ]]; then
