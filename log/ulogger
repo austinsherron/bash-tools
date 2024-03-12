@@ -46,10 +46,10 @@ OPTIONS
 
     -l, --log-level     the log level of the message; determines which messages get logged to stdout; see log/log-level
     -p, --prefix        optional; can also be set via the ULOGGER_PREFIX env var; a label w/ which to prefix log messages for enhanced logging granularity
-    -t, --type          optional, defaults to "default"; can also be set via the ULOGGER_TYPE env var; determines the log file to which logs are written; provided types 
+    -t, --type          optional, defaults to "default"; can also be set via the ULOGGER_TYPE env var; determines the log file to which logs are written; provided types
                         are used to construct paths of the following form: "\${LOG_ROOT}/\${TYPE}.log"; if that file doesn't exist, it will be created
-    -s, --strategy      optional, defaults to "normal"; can also be set via the ULOGGER_STRATEGY or ULOGGER_VERBOSE env vars; the former sets the "force" strategy; 
-                        possible values are "normal", "notify", "log", and "force"; determines where/how logs are written    
+    -s, --strategy      optional, defaults to "normal"; can also be set via the ULOGGER_STRATEGY or ULOGGER_VERBOSE env vars; the former sets the "force" strategy;
+                        possible values are "normal", "notify", "log", and "force"; determines where/how logs are written
     -n, --no-fmt        optional; if present, the log line won't be formatted w/ log level, prefix, date, etc.
     -h, --help          optional; display this message
 help
@@ -89,7 +89,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -t|--type)
-      LOG_PATH="${LOG_ROOT}/${2}.log" 
+      LOG_PATH="${LOG_ROOT}/${2}.log"
       shift
       shift
       ;;
@@ -127,10 +127,10 @@ if [[ -z "${STRATEGIES[${STRATEGY}]+x}" ]]; then
     exit 1
 fi
 
+# create log dir if it doesn't exist
+[[ ! -d "${LOG_ROOT}" ]] && mkdir "${LOG_ROOT}"
 # create log file if it doesn't exist
-if [[ ! -f "${LOG_PATH}" ]]; then
-    touch "${LOG_PATH}" 
-fi
+[[ ! -f "${LOG_PATH}" ]] && touch "${LOG_PATH}"
 
 # format log line; if necessary
 if [[ -z "${NO_FMT}" ]]; then

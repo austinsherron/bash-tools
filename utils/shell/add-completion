@@ -13,7 +13,7 @@ help() {
 cat <<help
 DESCRIPTION
 
-    Moves the completion script provided with -p|--path to a directory that's sourced by bash-completion--or to the directory provided with -d|--dir. 
+    Moves the completion script provided with -p|--path to a directory that's sourced by bash-completion--or to the directory provided with -d|--dir.
 
 USAGE
 
@@ -22,7 +22,7 @@ USAGE
 OPTIONS
 
     -p, --path          path to the completion script to add
-    -d, --dir           optional, defaults to the value of the "COMPLETION_DIR" env var; path to the directory to which to add the completion script; this should be a 
+    -d, --dir           optional, defaults to the value of the "COMPLETION_DIR" env var; path to the directory to which to add the completion script; this should be a
                         directory that's sourced by bash-completion
     -k, --keep          optional; if present, keeps the original completion script provided via -p|--path
     -f, --force         optional; if present, overwrites any existing completion script in the target dir that collides with the script being added
@@ -84,19 +84,19 @@ done
 
 # validate that a completion script was provided and that it's a valid file
 if [[ -z "${COMPLETION_FILE}" ]]; then
-    ulogger error "-p|--path is required" -p "S > SHELL" 
+    ulogger error "-p|--path is required"
     exit 1
 fi
 
 if [[ ! -f "${COMPLETION_FILE}" ]]; then
-    ulogger error "-p|--path must refer to a valid file" -p "UTILS > SHELL" 
+    ulogger error "-p|--path must refer to a valid file"
     exit 1
 fi
 
 # validate that there's some completion dir available
 if [[ -z "${USER_COMPLETION_DIR}" ]] && [[ -z "${COMPLETION_DIR+x}" ]]; then
-    ulogger error "no value specified for -d|--dir and COMPLETION_DIR env var is unset" -p "UTILS > SHELL" 
-    ulogger error "unable to determine destination for completion file" -p "UTILS > SHELL" 
+    ulogger error "no value specified for -d|--dir and COMPLETION_DIR env var is unset"
+    ulogger error "unable to determine destination for completion file"
     exit 1
 elif [[ -z "${USER_COMPLETION_DIR}" ]]; then
     ulogger info "falling back to completion dir env var='${COMPLETION_DIR}'"
