@@ -43,7 +43,9 @@ help
 PKG=""
 MGR=""
 NO_WHICH=""
-LOG_ARGS="-p check --type pkg"
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="pkg"
+export ULOGGER_PREFIX="check"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -62,17 +64,12 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -v|--verbose)
-      LOG_ARGS="${LOG_ARGS} -s force"
+      export ULOGGER_VERBOSE="true"
       shift
       ;;
     -h|--help)
       help
       exit 0
-      ;;
-    --logger)
-      LOG_ARGS="${2}"
-      shift
-      shift
       ;;
      *)
       usage
@@ -83,11 +80,11 @@ done
 
 
 __log_is_installed() {
-    logger -l info "package '${PKG}' is installed (via '${1}')" ${LOG_ARGS}
+    ulogger info "package '${PKG}' is installed (via '${1}')"
 }
 
 __log_not_installed() {
-    logger -l info "package '${PKG}' not installed (via '${1}')" ${LOG_ARGS}
+    ulogger info "package '${PKG}' not installed (via '${1}')"
 }
 
 __check_which() {
@@ -155,7 +152,7 @@ __check_all() {
 }
 
 if [[ -z "${PKG}" ]]; then
-    logger -l error "-p|--pkg is required" ${LOG_ARGS}
+    ulogger error "-p|--pkg is required"
     exit 1
 fi
 
@@ -178,7 +175,7 @@ case "${MGR}" in
       __check_snap
       ;;
     *)
-      logger -l error "-m|--mgr must be one of 'apt|flatpak|snap', not ${MGR}" ${LOG_ARGS}
+      ulogger error "-m|--mgr must be one of 'apt|flatpak|snap', not ${MGR}"
       exit 2
       ;;
 esac
