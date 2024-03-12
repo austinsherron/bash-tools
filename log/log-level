@@ -6,7 +6,7 @@ source /etc/profile.d/shared_paths.sh
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="log-level LOG_LEVEL"
+USAGE="log-level LOG_LEVEL [-v]"
 
 usage() {
     echo "${USAGE}"
@@ -31,25 +31,43 @@ DESCRIPTION
 
     Additionally, the current/default log level may be set to "OFF" (though logger callers cannot pass that level).
 
+    Return codes (w/o -v|--validate):
+
+        0 - the provided log level's severity indicates that a message should propagate to stdout
+        1 - the provided log level's severity indicates that a message should not propagate to stdout
+        2 - the provided log level or some global log level configuration (i.e.: CURRENT_LOG_LEVEL, DEFAULT_LOG_LEVEL) is invalid
+
+    Return codes (w/ -v|--validate):
+        0 - the provided log level is valid
+        1 - the provided log level is not valid
+
 USAGE
 
     ${USAGE}
 
 POSITIONAL ARGUMENTS
 
-    LOG_LEVEL       the log level to validate and test against the current log level
+    LOG_LEVEL           the log level to validate and test against the current log level
 
 OPTIONS
 
-    -h, --help      optional; display this message
+    -v, --validate      optional; if specified, exit after validating the provided log level
+    -h, --help          optional; display this message
 help
 }
 
 
 LOG_LEVEL=""
+VALIDATE=""
+ERROR_RC=2
 
 while [[ $# -gt 0 ]]; do
   case $1 in
+    -v|--validate)
+      VALIDATE="true"
+      ERROR_RC=1
+      shift
+      ;;
     -h|--help)
       help
       exit 0
@@ -70,28 +88,34 @@ declare -A LOG_LEVELS=([TRACE]=0 [DEBUG]=1 [INFO]=2 [WARN]=3 [ERROR]=4 [OFF]=5)
 declare -A PUBLIC_LOG_LEVELS=([TRACE]=0 [DEBUG]=1 [INFO]=2 [WARN]=3 [ERROR]=4)
 
 # arg validation
+
 if [[ -z "${LOG_LEVEL}" ]]; then
     echo "[ERROR] -l|--log-level is required"
-    exit 2
+    exit $ERROR_RC
+fi
+
+if [[ -z "${PUBLIC_LOG_LEVELS[${LOG_LEVEL}]+x}" ]]; then
+    echo "[ERROR] -l|--log-level (${LOG_LEVEL}) is not a valid log level"
+    exit $ERROR_RC
+fi
+
+# if -v|--validate is specified, exit after validating the provided log level
+if [[ "${VALIDATE}" == "true" ]]; then
+    exit 0
 fi
 
 # config validation
 
 if [[ -z "${CURRENT_LOG_LEVEL+x}" ]] && [[ -z "${DEFAULT_LOG_LEVEL+x}" ]]; then
     echo '[ERROR] unable to determine current log level'
-    exit 2
+    exit $ERROR_RC
 elif [[ -z "${CURRENT_LOG_LEVEL+x}" ]]; then
     CURRENT_LOG_LEVEL="${DEFAULT_LOG_LEVEL}"
 fi
 
-if [[ -z "${PUBLIC_LOG_LEVELS[${LOG_LEVEL}]+x}" ]]; then
-    echo "[ERROR] -l|--log-level (${LOG_LEVEL}) is not a valid log level"
-    exit 2
-fi
-
 if [[ -z "${LOG_LEVELS[${CURRENT_LOG_LEVEL}]+x}" ]]; then
     echo "[ERROR] CURRENT_LOG_LEVEL (${CURRENT_LOG_LEVEL}) is not a valid log level"
-    exit 2
+    exit $ERROR_RC
 fi
 
 CURRENT_SEVERITY="${LOG_LEVELS[${CURRENT_LOG_LEVEL}]}"
