@@ -21,7 +21,7 @@ This repo contains--or is intended to contain--production ready scripts that I r
 ```
 
 * Git - Custom git scripts.
-* Inactive - Scripts under inactive are either in development, hopelessly malfunctioning w/ little to no hope of being fixed in the near-mid term, or just really no longer necessary/useful. 
+* Inactive - Scripts under inactive are either in development, hopelessly malfunctioning w/ little to no hope of being fixed in the near-mid term, or just really no longer necessary/useful.
 * System - Anything related to "system" management, i.e.: backups, systemd units, etc.
 * Utils - Miscellaneous utilities.
 
@@ -40,6 +40,7 @@ This repo contains--or is intended to contain--production ready scripts that I r
 
 - [ ] Write unit tests
 - [ ] Migrate all tools/scripts to use ulogger
+- [ ] Reorganize scripts
 
 ### Fixes
 
