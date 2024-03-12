@@ -6,7 +6,7 @@ source /etc/profile.d/shared_paths.sh
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="logger -l level [-p prefix] [-t type] [-f] [-n]"
+USAGE="ulogger -l level [-p prefix] [-t type] [-f] [-n]"
 
 usage() {
     echo "${USAGE}"
@@ -16,7 +16,7 @@ help() {
 cat <<help
 DESCRIPTION
 
-    Logs messages to files and/or stdout based on logger configuration and provided arguments.
+    User logger (i.e.: ulogger) that logs messages to files and/or stdout based on logger configuration and provided arguments.
 
     The only arguments required to make a logger call are a log level, -l|--log-level, and a message to log. Log levels can be any of the following:
 
@@ -26,7 +26,7 @@ DESCRIPTION
         * warn - messages about abnormal, but not necessarily dangerous, system operations
         * error - messages about abnormal, potentially dangerous system operations that are be considered errors
 
-    Optionally, messages can be logged w/ a prefix, -p|--prefix, (for grouping related log lines), a type, -t|--type, (determines the file to which messages are logged), i
+    Optionally, messages can be logged w/ a prefix, -p|--prefix, (for grouping related log lines), a type, -t|--type, (determines the file to which messages are logged),
     and a strategy, -s|--strategy. Strategies determine whether messages are written to a file, to stdout, or both. The following are valid strategies:
 
         * normal - the default strategy; lines are written to relevant log files, but are only logged to stdout if the provided log level is >= the current log level
@@ -45,10 +45,11 @@ POSITIONAL ARGUMENTS
 OPTIONS
 
     -l, --log-level     the log level of the message; determines which messages get logged to stdout; see log/log-level
-    -p, --prefix        optional; a label w/ which to prefix log messages for enhanced logging granularity
-    -t, --type          optional, defaults to "default"; determines the log file to which logs are written; provided types are used to construct paths of the following 
-                        form: "${LOG_ROOT}/${TYPE}.log"; if that file doesn't exist, it will be created
-    -s, --strategy      optional, defaults to "normal"; possible values are "normal", "notify", "log", and "force"; determines where/how logs are written    
+    -p, --prefix        optional; can also be set via the ULOGGER_PREFIX env var; a label w/ which to prefix log messages for enhanced logging granularity
+    -t, --type          optional, defaults to "default"; can also be set via the ULOGGER_TYPE env var; determines the log file to which logs are written; provided types 
+                        are used to construct paths of the following form: "\${LOG_ROOT}/\${TYPE}.log"; if that file doesn't exist, it will be created
+    -s, --strategy      optional, defaults to "normal"; can also be set via the ULOGGER_STRATEGY or ULOGGER_VERBOSE env vars; the former sets the "force" strategy; 
+                        possible values are "normal", "notify", "log", and "force"; determines where/how logs are written    
     -n, --no-fmt        optional; if present, the log line won't be formatted w/ log level, prefix, date, etc.
     -h, --help          optional; display this message
 help
@@ -65,13 +66,23 @@ STRATEGY="NORMAL"
 NO_FMT=""
 LOG_PATH="${LOG_ROOT}/default.log"
 
+__process_positional() {
+    if [[ -z "${LOG_LEVEL}" ]]; then
+        LOG_LEVEL="$(to_upper "${1}")"
+        log-level "${LOG_LEVEL}" -v || exit 1
+    else
+      MSGS="$([[ -z "${MSGS}" ]] && echo "${1}" || echo "${MSGS} ${1}")"
+      LOG_LINE="${MSGS}"
+    fi
+}
+
+[[ -n "${ULOGGER_PREFIX+x}" ]] && PREFIX="$(to_upper "${ULOGGER_PREFIX}")"
+[[ -n "${ULOGGER_VERBOSE+x}" ]] && [[ "${ULOGGER_VERBOSE}" == "true" ]] && STRATEGY="FORCE"
+[[ -n "${ULOGGER_STRATEGY+x}" ]] && STRATEGY="$(to_upper "${ULOGGER_STRATEGY}")"
+[[ -n "${ULOGGER_TYPE+x}" ]] && LOG_PATH="${LOG_ROOT}/${ULOGGER_TYPE}.log"
+
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -l|--log-level)
-      LOG_LEVEL="$(to_upper "${2}")"
-      shift
-      shift
-      ;;
     -p|--prefix)
       PREFIX="$(to_upper "${2}")"
       shift
@@ -96,8 +107,7 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      MSGS="$([[ -z "${MSGS}" ]] && echo "${1}" || echo "${MSGS} ${1}")"
-      LOG_LINE="${MSGS}"
+      __process_positional "${1}"
       shift
       ;;
   esac
