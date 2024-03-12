@@ -43,7 +43,9 @@ USB_PATH="/sys/bus/usb/devices/*/power/wakeup"
 DEFAULT_DEVICES=("XHCI" "PWRB" "SLPB" "LID0")
 WAKEUP_DEVICES=()
 DRY_RUN=""
-VERBOSE=""
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="cron"
+export ULOGGER_PREFIX="wakeup"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -62,7 +64,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -v|--verbose)
-      VERBOSE="true"
+      export ULOGGER_VERBOSE="true"
       shift
       ;;
     -h|--help)
@@ -81,13 +83,13 @@ if [[ "${#WAKEUP_DEVICES[@]}" -eq 0 ]]; then
     WAKEUP_DEVICES+=("${DEFAULT_DEVICES[@]}")
 fi
 
-[[ "${VERBOSE}" == "true" ]] && echo "[INFO] enabling usb devices in path=${USB_PATH}"
+ulogger info "enabling usb devices in path=${USB_PATH}"
 echo "enabled" | sudo tee ${USB_PATH}
 
 for device in "${WAKEUP_DEVICES[@]}"; do
     # only enable if disabled, as this actually toggles the value
     if grep "${device}" /proc/acpi/wakeup | grep -q disabled; then
-        [[ "${VERBOSE}" == "true" ]] && echo "[INFO] enabling device=${device}"
+        ulogger info "enabling device=${device}"
         [[ -z "${DRY_RUN}" ]] && echo "${device}" > /proc/acpi/wakeup
     fi
 done

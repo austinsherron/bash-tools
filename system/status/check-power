@@ -58,12 +58,12 @@ MECHANISM=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     -s|--status)
-      STATUS="$([[ -z "${2+x}" ]] && echo "" || echo "${2}")"
+      STATUS="${2}"
       shift
       shift
       ;;
     -m|--mechanism)
-      MECHANISM="$([[ -z "${2+x}" ]] && echo "" || echo "${2}")"
+      MECHANISM="${2}"
       shift
       shift
       ;;
@@ -79,17 +79,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -n "${STATUS}" ]] && [[ -z "${WHAT[${STATUS}]+x}" ]]; then
-    echo "[ERROR] -s|--status must be one of {${!WHAT[*]}}, not \"${STATUS}\""
+    ulogger error "-s|--status must be one of {${!WHAT[*]}}, not \"${STATUS}\""
     exit 1
 fi
 
 if [[ -n "${MECHANISM}" ]] && [[ -z "${HOW[${MECHANISM}]+x}" ]]; then
-    echo "[ERROR] -m|--mechanism must be one of {${!HOW[*]}}, not \"${MECHANISM}\""
+    ulogger error "-m|--mechanism must be one of {${!HOW[*]}}, not \"${MECHANISM}\""
     exit 1
 fi
 
 if [[ -n "${STATUS}" ]] && [[ "${MECHANISM}" == "enum" ]]; then
-    echo "[ERROR] -s|--status cannot be used w/ -m enum"
+    ulogger error "-s|--status cannot be used w/ -m enum"
     exit 1
 fi
 
