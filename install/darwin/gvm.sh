@@ -65,15 +65,11 @@ function __install_gvm() {
 }
 
 function __is_go_version_installed() {
-    gvm list | tail --lines=+4 | sed 's/[[:space:]]*//' | sed 's/=> //' | grep -q "${1}"
+    gvm list | tail --lines=+4 | sed 's/[[:space:]]*//' | sed 's/=> //' | grep -q "${1}" && return 0 || return 1
 }
 
 function __install_go_version() {
-    if __is_go_version_installed "${1}"; then
-        echo "[INFO] ${1} is already installed"
-        return 0
-    fi
-
+    echo "[INFO] installing ${1}"
     gvm install "${1}"
 }
 
@@ -82,13 +78,15 @@ if ! __install_gvm; then
     exit 1
 fi
 
-for VERSION in "${VERIONS[@]}"; do
-    if ! __install_go_version "${VERSION}"; then
-        echo "[ERROR] unable to install ${VERSION}"
-        exit 1
+for VERSION in ${VERSIONS[@]}; do
+    if __is_go_version_installed "${VERSION}"; then
+        echo "[INFO] go version=${VERSION} is already installed"
+    else
+        __install_go_version "${VERSION}"
     fi
+
 done
 
 # FIXME: this is currently broken: https://github.com/moovweb/gvm/issues/188
-[[ -n "${USE}" ]] && gvm use "${USE}"
+# [[ -n "${USE}" ]] && gvm use "${USE}"
 
