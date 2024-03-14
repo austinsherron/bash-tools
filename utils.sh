@@ -27,10 +27,11 @@ function join_by() {
 # Arguments:
 #   path: the path to the checksum file
 # Returns:
-#   0 if checksum is valid, > 0 otherwise (see md5sum)
+#   0 if checksum is valid, 1 otherwise (i.e.: on validation failure or if md5sum isn't formatted properly)
+#   2 if function arguments aren't valid
 #######################################
 function md5_checksum() {
-    validate_num_args 1 $# "md5_checksum"
+    validate_num_args 1 $# "md5_checksum" || return 2
 
     local path="${1}"
 
@@ -44,9 +45,12 @@ function md5_checksum() {
 #   str: the string to convert
 # Outputs:
 #   Writes the lower-case string to stdout
+# Returns:
+#   0 if checksum is valid, 1 otherwise (i.e.: on validation failure or if md5sum isn't formatted properly)
+#   2 if function arguments aren't valid
 #######################################
 function to_lower() {
-    validate_num_args 1 $# "to_lower"
+    validate_num_args 1 $# "to_lower" || return 2
 
     local str="${1}"
     echo "${str}" |  tr '[:upper:]' '[:lower:]'
@@ -58,9 +62,11 @@ function to_lower() {
 #   str: the string to convert
 # Outputs:
 #   Writes the upper-case string to stdout
+# Returns:
+#   1 if function arguments aren't valid
 #######################################
 function to_upper() {
-    validate_num_args 1 $# "to_upper"
+    validate_num_args 1 $# "to_upper" || return 1
 
     local str="${1}"
     echo "${str}" |  tr '[:lower:]' '[:upper:]'
@@ -73,9 +79,10 @@ function to_upper() {
 #   sfx: the suffix to check
 # Returns:
 #   0 if the string ends w/ sfx, 1 otherwise
+#   2 if function arguments aren't valid
 #######################################
 function endswith() {
-    validate_num_args 2 $# "endswith"
+    validate_num_args 2 $# "endswith" || return 2
 
     local str="${1}"
     local sfx="${2}"
@@ -114,9 +121,10 @@ function os-type() {
 #   fn_name: name of the function to check
 # Returns:
 #   0 if the function exists, 1 otherwise
+#   2 if function arguments aren't valid
 #######################################
 function fn_exists() {
-    validate_num_args 1 $# "fn_exists"
+    validate_num_args 1 $# "fn_exists" || return 2
 
     local fn_name="${1}"
     [[ $(type -t "${fn_name}") == function ]] && return 0 || return 1
