@@ -81,8 +81,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 
-required_param "-n|--name" "${FONT_NAME}"
-required_param "-f|--file" "${FILE_NAME}"
+required_param "-n|--name" "${FONT_NAME}" || exit 1
+required_param "-f|--file" "${FILE_NAME}" || exit 1
 
 FULL_URL="${URL}/${FONT_NAME}${STYLE}/${FILE_NAME}"
 
@@ -100,5 +100,5 @@ if [[ ! ${FULL_URL} == *.ttf ]] && [[ ! ${FULL_URL} == *.otf ]]; then
     exit 1
 fi
 
-cd ${FONT_DIR} && curl -fLO $FULL_URL
+cd "${FONT_DIR}" && curl -fLO ${FULL_URL}
 
