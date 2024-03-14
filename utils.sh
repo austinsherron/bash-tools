@@ -35,7 +35,7 @@ function md5_checksum() {
 
     local path="${1}"
 
-    validate_file "${path}"
+    validate_file "${path}" || return 2
     md5sum -c --status "${path}"
 }
 
