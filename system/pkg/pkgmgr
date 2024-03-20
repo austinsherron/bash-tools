@@ -129,7 +129,8 @@ __snap_cmd() {
 }
 
 __run_script() {
-    local script_path="${SCRIPTS_ROOT}/install/$(os-type)/${SCRIPT}.sh"
+    local script_path
+    script_path="${SCRIPTS_ROOT}/install/$(os-type)/${SCRIPT}.sh"
 
     if [[ ! -f "${script_path}" ]]; then
         ulogger info "script=${script_path} doesn't exist; falling back to os-agnostic path"
@@ -138,7 +139,7 @@ __run_script() {
     fi
 
     ulogger info "running script=${script_path}"
-    "${scripts_path}" && exit 0 || exit 1
+    "${script_path}" && exit 0 || exit 1
 }
 
 # TODO: test this
