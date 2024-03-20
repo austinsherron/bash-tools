@@ -6,7 +6,7 @@ source /etc/profile.d/shared_paths.sh
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="ulogger -l level [-p prefix] [-t type] [-f] [-n]"
+USAGE="ulogger level msg {msg} [-p prefix] [-t type] [-s normal|notify|log|force] [-n]"
 
 usage() {
     echo "${USAGE}"
@@ -41,10 +41,10 @@ USAGE
 POSITIONAL ARGUMENTS
 
     MSG                 components of the message to be logged
+    LEVEL               the log level of the message; determines which messages get logged to stdout; see log/log-level
 
 OPTIONS
 
-    -l, --log-level     the log level of the message; determines which messages get logged to stdout; see log/log-level
     -p, --prefix        optional; can also be set via the ULOGGER_PREFIX env var; a label w/ which to prefix log messages for enhanced logging granularity
     -t, --type          optional, defaults to "default"; can also be set via the ULOGGER_TYPE env var; determines the log file to which logs are written; provided types
                         are used to construct paths of the following form: "\${LOG_ROOT}/\${TYPE}.log"; if that file doesn't exist, it will be created
@@ -132,13 +132,13 @@ fi
 # create log file if it doesn't exist
 [[ ! -f "${LOG_PATH}" ]] && touch "${LOG_PATH}"
 
-# format log line; if necessary
+# format log line, if necessary
 if [[ -z "${NO_FMT}" ]]; then
     PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(to_upper "${PREFIX}")] " || echo "")"
     LOG_LINE="[${LOG_LEVEL}] ${PREFIX}${LOG_LINE} ($(date))"
 fi
 
-# write to log file
+# write to log file, if necessary
 if [[ "${STRATEGY}" != "NOTIFY" ]]; then
     echo "${LOG_LINE}" >> "${LOG_PATH}"
 fi
@@ -148,7 +148,7 @@ fi
 # propagate unexpected error
 if [[ ${ERR} -eq 2 ]]; then
     exit 1
-# write to stdout
+# write to stdout, if necessary
 elif [[ "${STRATEGY}" == "NORMAL" ]] && [[ "${ERR}" -eq 0 ]]; then
     echo "[${LOG_LEVEL}] ${MSGS}"
 elif [[ "${STRATEGY}" == "FORCE" ]] || [[ "${STRATEGY}" == "NOTIFY" ]]; then
