@@ -13,3 +13,13 @@ echo "[INFO] installing atuin"
 bash <(curl https://raw.githubusercontent.com/atuinsh/atuin/main/install.sh)
 atuin import auto
 
+if [[ -z "${COMPLETION_DIR+x}" ]]; then
+    echo "[WARN] unable to install atuin completions: COMPLETION_DIR is unset"
+    exit 0
+fi
+
+SHELL_NAME="$(basename "${SHELL}")"
+
+echo "[INFO] installing atuin completions for shell=${SHELL_NAME}"
+atuin gen-completions --shell "${SHELL_NAME}" --out-dir "${COMPLETION_DIR}"
+
