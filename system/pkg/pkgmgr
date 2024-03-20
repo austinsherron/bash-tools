@@ -19,7 +19,7 @@ DESCRIPTION
     Central entry point for basic interactions w/ packages via apt, flatpak, and snap package managers. Available commands include:
 
         * check - checks if -p|--pkg is installed
-        * search - searches all apt, flatpak, and snap for -p|--pkg 
+        * search - searches all apt, flatpak, and snap for -p|--pkg
         * install - maps to install in all three package managers
         * update - maps to: apt "upgrade", flatpak "upgrade", snap "refresh"
         * remove - maps to: apt "remove", flatpak "uninstall", snap "remove"
@@ -109,7 +109,7 @@ export ULOGGER_PREFIX="${CMD}"
 __apt_cmd() {
     local cmd="${APT[${CMD}]}"
 
-    ulogger info "running 'apt ${cmd} ${PKG}'" 
+    ulogger info "running 'apt ${cmd} ${PKG}'"
     [[ -z "${DRY_RUN}" ]] && sudo apt update "${CONFIRM}" && sudo apt "${cmd}" ${PKG} ${ARGS[@]}
 }
 
@@ -117,20 +117,33 @@ __flatpak_cmd() {
     local cmd="${FP[${CMD}]}"
 
     [[ "${PKG}" == *"."* ]] && [[ "${cmd}" == "install" ]] && PKG="flathub ${PKG}"
-    ulogger info "running 'flatpak ${cmd} ${PKG}'" 
+    ulogger info "running 'flatpak ${cmd} ${PKG}'"
     [[ -z "${DRY_RUN}" ]] && sudo flatpak "${cmd}" ${PKG} ${ARGS[@]}
 }
 
 __snap_cmd() {
     local cmd="${SNAP[${CMD}]}"
 
-    ulogger info "running 'snap ${cmd} ${PKG} ${ARGS[*]}'" 
-    [[ -z "${DRY_RUN}" ]] && sudo snap "${cmd}" ${PKG} ${ARGS[@]} 
+    ulogger info "running 'snap ${cmd} ${PKG} ${ARGS[*]}'"
+    [[ -z "${DRY_RUN}" ]] && sudo snap "${cmd}" ${PKG} ${ARGS[@]}
 }
 
-if [[ -n "${SCRIPT}" ]]; then
-    "${SCRIPTS_ROOT}/install/$(os-type)/${SCRIPT}.sh" && exit 0 || exit 1
-fi
+__run_script() {
+    local script_path
+    script_path="${SCRIPTS_ROOT}/install/$(os-type)/${SCRIPT}.sh"
+
+    if [[ ! -f "${script_path}" ]]; then
+        ulogger info "script=${script_path} doesn't exist; falling back to os-agnostic path"
+        script_path="${SCRIPTS_ROOT}/install/generic/${SCRIPT}.sh"
+        [[ ! -f "${script_path}" ]] && ulogger error "os-agnostic script=${script_path} doesn't exist" && exit 1
+    fi
+
+    ulogger info "running script=${script_path}"
+    "${script_path}" && exit 0 || exit 1
+}
+
+# TODO: test this
+[[ -n "${SCRIPT}" ]] && __run_script
 
 if [[ -z "${PKG}" ]]; then
     ulogger error "-p|--pkg is required"
