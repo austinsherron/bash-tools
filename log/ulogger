@@ -84,7 +84,7 @@ __process_positional() {
 while [[ $# -gt 0 ]]; do
   case $1 in
     -p|--prefix)
-      PREFIX="$(to_upper "${2}")"
+      [[ -z "${PREFIX}" ]] && PREFIX="$(to_upper "${2}")"
       shift
       shift
       ;;
@@ -94,7 +94,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -s|--strategy)
-      STRATEGY="$(to_upper "${2}")"
+      [[ -z "${STRATEGY}" ]] && STRATEGY="$(to_upper "${2}")"
       shift
       shift
       ;;

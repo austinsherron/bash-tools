@@ -24,6 +24,7 @@ This repo contains--or is intended to contain--production ready scripts that I r
 
 - [ ] Write unit tests
 - [ ] Migrate all tools/scripts to use ulogger
+- [ ] Reorganize scripts
 
 ### Fixes
 

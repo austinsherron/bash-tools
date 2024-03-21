@@ -46,7 +46,8 @@ OPTIONS
     -f, --force         optional; if provided, install command will be executed even if package is already installed
     -s, --script        optional; the name of a script in "\${SCRIPTS_ROOT}/install/[os]|generic" to run; if provided, all params except -v|--verbose and -d|--dry-run will be ignored
     --script-arg        optional, multi-valued; only valid w/ -s|--script; args to pass to -s|--script
-    -*                  optional; arbitrary params/args to pass directly to brew
+    *                   optional; arbitrary params/args to pass directly to brew; WARN: cmd must be specified (can't use defaulting) if using wildcard arguments
+    -m, --mgr           optional; exists to make the pkgmgr api consistent; at the time of writing, this value is ignored
     -d, --dry-run       optional; if present, no state changes are made
     -v, --verbose       optional; if present, print to stdout messages about the script's progress
     -h, --help          display this message
@@ -58,7 +59,7 @@ declare -A CMDS=([check]="check" [search]="search" [install]="install" [update]=
 PKG=""
 CASK=""
 TAP=""
-CMD="install"
+CMD=""
 ARGS=()
 FORCE=""
 SCRIPT=""
@@ -67,7 +68,7 @@ DRY_RUN=""
 INSTALLED=1
 
 while [[ $# -gt 0 ]]; do
-  case $1 in
+  case "${1}" in
     -p|--pkg)
       PKG="${2}"
       shift
@@ -108,13 +109,12 @@ while [[ $# -gt 0 ]]; do
       help
       exit 0
       ;;
-     -*)
-      ARGS+=("${2}")
+    -m|--mgr)
       shift
       shift
       ;;
      *)
-      CMD="${1}"
+      [[ -z "${CMD}" ]] && CMD="${1}" || ARGS+=("${1}")
       shift
       ;;
   esac
@@ -169,6 +169,9 @@ __run_script() {
     "${script_path}" ${SCRIPT_ARGS[@]} || return 1
 }
 
+[[ -z "${CMD}" ]] && CMD="install"
+ulogger info "attempting ${CMD} of package=${PKG} (cask: ${CASK}) (args: ${ARGS[*]})"
+
 if [[ -n "${SCRIPT}" ]]; then
     __run_script && exit 0 || exit 1
 elif [[ -z "${SCRIPT}" ]] && [[ ${#SCRIPT_ARGS[@]} -gt 0 ]]; then
@@ -187,7 +190,7 @@ fi
 
 if [[ -z "${CMDS[${CMD}]+x}" ]]; then
     CMDS_STR="$(echo "${!CMDS[*]}" | tr ' ' '|')"
-    ulogger error "-c|--cmd must be one of ${CMDS_STR}"
+    ulogger error "cmd must be one of '${CMDS_STR}', not '${CMD}'"
     exit 1
 fi
 
