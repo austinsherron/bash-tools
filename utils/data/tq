@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+
+USAGE="tq path [selector]"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    A small script that attempts to do for toml what jq does for json, or yq for yaml.
+
+    Note: one small behavioral different b/w tq and jq/yq is that "null" values manifest as the empty string ("").
+
+    Impl note: this script is a simple wrapper arounda toml -> json converter that calls jq.
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    path            a path to a toml file
+    selector        optional; a jq style selector
+    *               all additional arguments can be considered as being passed directly to jq
+
+OPTIONS
+
+    -s, --strict        optional, defaults to false; if provided, non-existent paths are treated as fatal erros instead of manifesting a empty (null) values
+    -h, --help          optional; display this message
+help
+}
+
+
+TOML_PATH=""
+SELECTOR="."
+ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *)
+      ARGS+=("${1}")
+      shift
+      ;;
+  esac
+done
+
+
+# validate dependencies
+
+if ! which jq &> /dev/null; then
+    echo "[ERROR] jq is required for tq"
+    exit 1
+fi
+
+if ! which rq &> /dev/null; then
+    echo "[ERROR] rq is required for tq"
+    exit 1
+fi
+
+# process arguments
+
+[[ ${#ARGS[@]} -ge 1 ]] && TOML_PATH="${ARGS[0]}"
+[[ ${#ARGS[@]} -ge 2 ]] && SELECTOR="${ARGS[1]}"
+ARGS=("${ARGS[@]:2}")
+
+# validate arguments
+
+if [[ ! -f "${TOML_PATH}" ]]; then
+    echo "[ERROR] path (${TOML_PATH:-?}) must refer to a valid file"
+    exit 1
+fi
+
+# execute
+
+OUT="$(cat "${TOML_PATH}" | rq -t | rq -J | jq "${SELECTOR}" ${ARGS[*]})"
+[[ "${OUT}" != "null" ]] && echo "${OUT}" || echo ""
+
