@@ -2,7 +2,7 @@
 
 
 source /etc/profile.d/shared_paths.sh
-source "${CODE_ROOT}"/lib/bash/args.sh
+source "${CODE_ROOT}"/lib/bash/args/validate.sh
 
 
 #######################################
@@ -41,7 +41,6 @@ function make_path() {
 
     echo "${path}"
 }
-
 
 #######################################
 # Checks an md5 checksum file.
@@ -149,5 +148,17 @@ function fn_exists() {
 
     local fn_name="${1}"
     [[ $(type -t "${fn_name}") == function ]] && return 0 || return 1
+}
+
+#######################################
+# Checks if the provided value is truthy (i.e.: == "true" or 0).
+# Arguments:
+#   val: the value to check
+# Returns
+#   0 if val == "true" or 0, 1 otherwise
+#######################################
+function is_true() {
+    local val="${1}"
+    [[ "${val}" == "true" || $val -eq 0 ]] && return 0 || return 1
 }
 
