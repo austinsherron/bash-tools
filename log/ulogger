@@ -133,13 +133,13 @@ if [[ -z "${STRATEGIES[${STRATEGY}]+x}" ]]; then
 fi
 
 LOG_ROOT="$(log-config -f root -c "${CONFIG_PATH}")"
+LOG_DIR="$(log-config -f dir -c "${CONFIG_PATH}")"
 LOG_PATH="$(log-config -f path -c "${CONFIG_PATH}")"
-LOG_PARENT="$(dirname "${LOG_PATH}")"
 
 # create log dir if it doesn't exist
-[[ ! -d "${LOG_ROOT}" ]] && mkdir "${LOG_ROOT}"
+[[ ! -d "${LOG_ROOT}" ]] && mkdir -p "${LOG_ROOT}"
 # create log file's parent dir, if it doesn't exist
-[[ ! -d "${LOG_PARENT}" ]] && mkdir "${LOG_PARENT}"
+[[ ! -d "${LOG_DIR}" ]] && mkdir -p "${LOG_DIR}"
 # create log file if it doesn't exist
 [[ ! -f "${LOG_PATH}" ]] && touch "${LOG_PATH}"
 

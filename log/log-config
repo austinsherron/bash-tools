@@ -6,7 +6,30 @@ source /etc/profile.d/shared_paths.sh
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="log-config [-f path|level|root] [-q default|user] [-t type] [-c path]"
+declare -A FIELDS=([level]=1 [path]=1 [dir]=1 [root]=1 [type]=1)
+declare -A QUERY_TYPES=([default]=1 [user]=1)
+
+function __is_field() {
+    local field="${1}"
+    [[ -n "${FIELDS[${field}]+x}" ]] && return 0 || return 1
+}
+
+function __fields() {
+    local sep="${1:-|}"
+    join_by "${sep}" ${!FIELDS[@]}
+}
+
+function __is_query_type() {
+    local query_type="${1}"
+    [[ -n "${QUERY_TYPES[${query_type}]+x}" ]] && return 0 || return 1
+}
+
+function __query_types() {
+    local sep="${1:-|}"
+    join_by "${sep}" ${!QUERY_TYPES[@]}
+}
+
+USAGE="log-config [-f $(__fields)] [-q $(__query_types)] [-t type] [-c path]"
 
 usage() {
     echo "${USAGE}"
@@ -31,8 +54,8 @@ USAGE
 
 OPTIONS
 
-    -f, --field     optional, required if -q|--query isn't specified; the field to read from config; valid values are "path", "level", and "root"
-    -q, --query     optional, required if -f|--field isn't specified; writes to stdout the config block of the provided type; valid values are "default" and "user"
+    -f, --field     optional, required if -q|--query isn't specified; the field to read from config; valid values: $(__fields ", ")
+    -q, --query     optional, required if -f|--field isn't specified; writes to stdout the config block of the provided type; valid values: $(__query_types ", ")
     -t, --type      optional; the logger type for which config is being read; can also be specified via $\ULOGGER_TYPE
     -c, --config    optional; a path to a file from which to read user ulogger config
     -h, --help      optional; display this message
@@ -82,9 +105,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-
-declare -A FIELDS=([level]=1 [path]=1 [root]=1)
-declare -A QUERY_TYPES=([default]=1 [user]=1)
 
 function __get_log_level_from_env() {
     if [[ -n "${CURRENT_LOG_LEVEL+x}" ]]; then
@@ -152,7 +172,7 @@ function __default_type() {
     __get_from_config ".type.default"
 }
 
-function __get_type() {
+function __get_log_type() {
     if [[ -n "${TYPE}" ]]; then
         echo "${TYPE}"
         return 0
@@ -167,7 +187,7 @@ function __get_type() {
 }
 
 function __current_log_level() {
-    local type="$(__get_type)"
+    local type="$(__get_log_type)"
     local level="$(__get_from_user_config .level.overrides."${type}")"
 
     [[ -z "${level}" ]] && level="$(__get_from_config .level.current)"
@@ -179,58 +199,64 @@ function __current_log_level() {
     exit 1
 }
 
-function __get_type_path() {
-    local type="${1}"
-    local type_path="$(__get_from_config ".path.${type}")"
+function __get_type_root() {
+    __get_from_config ".path.nested.${type}"
+}
 
-    [[ -z "${type_path}" ]] && type_path="${type}.log"
-    [[ -n "${type_path}" ]] && echo "${type_path}" && return 0
+function __get_type_file() {
+    local type="${1}"
+    local type_file="$(__get_from_config ".path.${type}")"
+
+    [[ -z "${type_file}" ]] && type_file="${type}.log"
+    [[ -n "${type_file}" ]] && echo "${type_file}" && return 0
 
     echo "[ERROR] unable to determine logger type path from config"
     exit 1
 }
 
-function __get_log_path() {
-    local type="$(__get_type)"
-    local log_root="$(__log_root)"
-    local type_path="$(__get_type_path "${type}")"
+function __get_type_dir_path() {
+    local type="${1-}"
+    local path_parts=()
 
-    echo "${log_root}/${type_path}"
+    [[ -z "${type}" ]] && type="$(__get_log_type)"
+    path_parts+=("$(__log_root)")
+    path_parts+=("$(__get_type_root "${type}")")
+
+    make_path ${path_parts[@]}
+}
+
+function __get_full_type_path() {
+    local type="$(__get_log_type)"
+    local path_parts=()
+
+    path_parts+=("$(__get_type_dir_path "${type}")")
+    path_parts+=("$(__get_type_file "${type}")")
+
+    make_path ${path_parts[@]}
 }
 
 function __handle_query() {
-    case "${QUERY}" in
-        default)
-          __get_default_config || return 1
-          ;;
-        user)
-          __get_user_config || return 1
-          ;;
-        *)
-          QUERY_TYPES_STR="$(echo "${QUERY_TYPES[*]}" | tr " " "|")"
-          echo "[ERROR] -q|--query must be one of ${QUERY_TYPES}, not ${QUERY}"
-          return 1
-          ;;
-    esac
+    if ! __is_query_type "${QUERY}"; then
+        echo "[ERROR] -q|--query must be one of '$(__query_types)', not '${QUERY}'"
+        return 1
+    fi
+
+    eval "__get_${QUERY}_config" || return 1
 }
 
+__get_level() { __current_log_level ; }
+__get_path() { __get_full_type_path ; }
+__get_dir() { __get_type_dir_path ; }
+__get_root() { __log_root ; }
+__get_type() { __get_log_type ; }
+
 function __handle_field() {
-    case "${FIELD}"  in
-      level)
-        __current_log_level
-        ;;
-      path)
-        __get_log_path
-        ;;
-      root)
-        __log_root
-        ;;
-      *)
-        FIELDS_STR="$(echo "${!FIELDS[*]}" | tr " " "|")"
-        echo "[ERROR] -f|--field must be one of '${FIELDS_STR}', not '${FIELD}'"
+    if ! __is_field "${FIELD}"; then
+        echo "[ERROR] -f|--field must be one of '$(__fields)', not '${FIELD}'"
         return 1
-        ;;
-    esac
+    fi
+
+    eval "__get_${FIELD}" || return 1
 }
 
 # dependency validation
@@ -248,9 +274,9 @@ if [[ ! -s "${CONFIG_PATH}" ]]; then
 fi
 
 if [[ -n "${QUERY}" ]]; then
-    __handle_query && exit 0 || exit 1
+    __handle_query || exit 1
 elif [[ -n "${FIELD}" ]]; then
-    __handle_field && exit 0 || exit 1
+    __handle_field || exit 1
 else
     echo "[ERROR] one of -f|--field or -q|--query is required"
     exit 1
