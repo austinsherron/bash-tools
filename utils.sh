@@ -23,6 +23,27 @@ function join_by() {
 }
 
 #######################################
+# Creates a path from parts. Filters out empty parts to avoid extra separators.
+# Arguments:
+#   n path parts to join w// forward-slash ('/')
+# Outputs:
+#   Writes to stdout a single path comprised of provided non-empty path parts
+#######################################
+function make_path() {
+    local path=""
+
+    [[ $# -ge 1 ]] && path="${1}" && shift
+
+    while [[ $# -gt 0 ]]; do
+        [[ -n "${1}" ]] && path="${path}/${1}"
+        shift
+    done
+
+    echo "${path}"
+}
+
+
+#######################################
 # Checks an md5 checksum file.
 # Arguments:
 #   path: the path to the checksum file
