@@ -78,7 +78,7 @@ function validate_one_of() {
     done
 
     local valid_vals_str="$(echo "${valid_vals[*]}" | tr " " "|")"
-    echo "[ERROR] ${name} must be one of '${valid_vals_str}', not '${val}'"
+    ulogger error "${name} must be one of '${valid_vals_str}', not '${val}'"
     erturn 1
 }
 
