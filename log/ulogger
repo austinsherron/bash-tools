@@ -6,7 +6,7 @@ source /etc/profile.d/shared_paths.sh
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="ulogger level msg {msg} [-p prefix] [-t type] [-s normal|notify|log|force] [-n]"
+USAGE="ulogger level msg {msg} [-p prefix] [-t type] [-s normal|notify|log|force] [-n] [-c path]"
 
 usage() {
     echo "${USAGE}"
@@ -51,6 +51,7 @@ OPTIONS
     -s, --strategy      optional, defaults to "normal"; can also be set via the ULOGGER_STRATEGY or ULOGGER_VERBOSE env vars; the former sets the "force" strategy;
                         possible values are "normal", "notify", "log", and "force"; determines where/how logs are written
     -n, --no-fmt        optional; if present, the log line won't be formatted w/ log level, prefix, date, etc.
+    -c, --config        optional; a path to a file from which to read user ulogger config
     -h, --help          optional; display this message
 help
 }
@@ -64,7 +65,7 @@ LOG_LEVEL=""
 PREFIX=""
 STRATEGY="NORMAL"
 NO_FMT=""
-LOG_PATH="${LOG_ROOT}/default.log"
+CONFIG_PATH=""
 
 __process_positional() {
     if [[ -z "${LOG_LEVEL}" ]]; then
@@ -79,7 +80,6 @@ __process_positional() {
 [[ -n "${ULOGGER_PREFIX+x}" ]] && PREFIX="$(to_upper "${ULOGGER_PREFIX}")"
 [[ -n "${ULOGGER_VERBOSE+x}" ]] && [[ "${ULOGGER_VERBOSE}" == "true" ]] && STRATEGY="FORCE"
 [[ -n "${ULOGGER_STRATEGY+x}" ]] && STRATEGY="$(to_upper "${ULOGGER_STRATEGY}")"
-[[ -n "${ULOGGER_TYPE+x}" ]] && LOG_PATH="${LOG_ROOT}/${ULOGGER_TYPE}.log"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -89,7 +89,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -t|--type)
-      LOG_PATH="${LOG_ROOT}/${2}.log"
+      export ULOGGER_TYPE="${2}"
       shift
       shift
       ;;
@@ -100,6 +100,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     -n|--no-fmt)
       NO_FMT="true"
+      shift
+      ;;
+    -c|--config)
+      CONFIG_PATH="${2}"
+      shift
       shift
       ;;
     -h|--help)
@@ -127,8 +132,14 @@ if [[ -z "${STRATEGIES[${STRATEGY}]+x}" ]]; then
     exit 1
 fi
 
+LOG_ROOT="$(log-config -f root -c "${CONFIG_PATH}")"
+LOG_PATH="$(log-config -f path -c "${CONFIG_PATH}")"
+LOG_PARENT="$(dirname "${LOG_PATH}")"
+
 # create log dir if it doesn't exist
 [[ ! -d "${LOG_ROOT}" ]] && mkdir "${LOG_ROOT}"
+# create log file's parent dir, if it doesn't exist
+[[ ! -d "${LOG_PARENT}" ]] && mkdir "${LOG_PARENT}"
 # create log file if it doesn't exist
 [[ ! -f "${LOG_PATH}" ]] && touch "${LOG_PATH}"
 
