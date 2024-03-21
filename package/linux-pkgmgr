@@ -6,7 +6,7 @@ source /etc/profile.d/shared_paths.sh
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
 
-USAGE="pkgmgr -p pkg -m mgr [-c cmd] [-f]"
+USAGE="pkgmgr [cmd] -p pkg [-m mgr] [-a] [-f] [-s script {--script-arg [arg]}]"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -26,18 +26,26 @@ DESCRIPTION
 
     Packages are installed only if they aren't already, unless -f|--force is provided. Similarly, packages are only updated/removed if they already exist in the system.
 
+    Can also be used to run installation scripts in "\${SCRIPTS_ROOT}/install/linux|generic".
+
+    Note: intended for use w/ linux based systems.
+
 USAGE
 
     ${USAGE}
 
+POSITIONAL ARGUMENTS
+
+    CMD                 optional, defaults to "install"; must be one of "check", "search", "install", "remove", or "update"; the cmd to run
+
 OPTIONS
 
-    -p, --pkg           the name of the package on which to perform an action; arguments/flags to package managers can be provided by providng quoted, multi-token strings
+    -p, --pkg           optional if -s|--script is used; the name of the package on which to perform an action; arguments/flags to package managers can be provided by providng quoted, multi-token strings
     -m, --mgr           must be one of "apt", "flatpak", or "snap"; the package manager to use
-    -c, --cmd           optional, defaults to "install"; must be one of "check", "search", "install", "remove", or "update"; the cmd to run
     -a, --ask           optional; if provided, package managers will ask for confirmation (where supported, i.e.: snap doesn't support this feature)
     -f, --force         optional; if provided, install command will be executed even if package is already installed
-    -s, --script        optional; the name of a script in "${SCRIPTS_ROOT}/install/[os]" to run; if provided, all params except -v|--verbose and -d|--dry-run will be ignored
+    -s, --script        optional; the name of a script in "\${SCRIPTS_ROOT}/install/[os]|generic" to run; if provided, all params except -v|--verbose and -d|--dry-run will be ignored
+    --script-arg        optional, multi-valued; only valid w/ -s|--script; args to pass to -s|--script
     -d, --dry-run       optional; if present, no state changes are made
     -v, --verbose       optional; if present, print to stdout messages about the script's progress
     -h, --help          display this message
@@ -56,6 +64,7 @@ CONFIRM="-y"
 ARGS=()
 FORCE=""
 SCRIPT=""
+SCRIPT_ARGS=()
 DRY_RUN=""
 
 while [[ $# -gt 0 ]]; do
@@ -83,6 +92,11 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
+    --script-arg)
+      SCRIPT_ARGS+=("${2}")
+      shift
+      shift
+      ;;
     -d|--dry-run)
       DRY_RUN="true"
       shift
@@ -105,6 +119,11 @@ done
 
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="pkg"
 export ULOGGER_PREFIX="${CMD}"
+
+if [[ "$(os-type)" == "linux" ]]; then
+    ulogger error "linux-pkgmgr can only be used w/ -s|--script on linux systems"
+    exit 1
+fi
 
 __apt_cmd() {
     local cmd="${APT[${CMD}]}"
@@ -135,15 +154,21 @@ __run_script() {
     if [[ ! -f "${script_path}" ]]; then
         ulogger info "script=${script_path} doesn't exist; falling back to os-agnostic path"
         script_path="${SCRIPTS_ROOT}/install/generic/${SCRIPT}.sh"
-        [[ ! -f "${script_path}" ]] && ulogger error "os-agnostic script=${script_path} doesn't exist" && exit 1
+        [[ ! -f "${script_path}" ]] && ulogger error "os-agnostic script=${script_path} doesn't exist" && return 1
     fi
 
-    ulogger info "running script=${script_path}"
-    "${script_path}" && exit 0 || exit 1
+    ulogger info "running script=${script_path} w/ args=${SCRIPT_ARGS[*]}"
+    [[ -z "${DRY_RUN}" ]] && return 0
+
+    "${script_path}" ${SCRIPT_ARGS[@]} || return 1
 }
 
-# TODO: test this
-[[ -n "${SCRIPT}" ]] && __run_script
+if [[ -n "${SCRIPT}" ]]; then
+    __run_script && exit 0 || exit 1
+elif [[ -z "${SCRIPT}" ]] && [[ ${#SCRIPT_ARGS[@]} -gt 0 ]]; then
+    ulogger error "--script-arg should be used only w/ -s|--script"
+    exit 1
+fi
 
 if [[ -z "${PKG}" ]]; then
     ulogger error "-p|--pkg is required"

@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source /etc/profile.d/shared_paths.sh
+source "${CODE_ROOT}/lib/bash/utils.sh"
+
+
+USAGE="pkgmgr cmd [-p pkg [-c]|-t] [-f] [-s script {--script-arg [arg]}] {brew-args}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Central entry point for basic interactions w/ packages for a darwin system via brew. Available commands include:
+
+        * check - checks if -p|--pkg is installed
+        * search - searches for -p|--pkg
+        * install - installs -p|--pkg
+        * update - maps to "upgrade"
+        * remove - removes -p|--pkg
+
+    Packages are installed only if they aren't already, unless -f|--force is provided. Similarly, packages are only updated/removed if they already exist in the system.
+
+    Can also used be to run installation scripts in "\${SCRIPTS_ROOT}/install/darwin|generic".
+
+    Note: intended for use w/ darwin based systems.
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    CMD                 optional, defaults to "install"; must be one of "check", "search", "install", "remove", or "update"; the cmd to run
+
+OPTIONS
+
+    -p, --pkg           optional if -s|--script or -t|--tap is used; the name of the package on which to perform an action
+    -c, --cask          optional; if provided, indicates that -p|--pkg should be treated as a cask
+    -t, --tap           optional; indicates that the provided "repo" should be tapped
+    -f, --force         optional; if provided, install command will be executed even if package is already installed
+    -s, --script        optional; the name of a script in "\${SCRIPTS_ROOT}/install/[os]|generic" to run; if provided, all params except -v|--verbose and -d|--dry-run will be ignored
+    --script-arg        optional, multi-valued; only valid w/ -s|--script; args to pass to -s|--script
+    -*                  optional; arbitrary params/args to pass directly to brew
+    -d, --dry-run       optional; if present, no state changes are made
+    -v, --verbose       optional; if present, print to stdout messages about the script's progress
+    -h, --help          display this message
+help
+}
+
+declare -A CMDS=([check]="check" [search]="search" [install]="install" [update]="upgrade" [remove]="remove")
+
+PKG=""
+CASK=""
+TAP=""
+CMD="install"
+ARGS=()
+FORCE=""
+SCRIPT=""
+SCRIPT_ARGS=()
+DRY_RUN=""
+INSTALLED=1
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -p|--pkg)
+      PKG="${2}"
+      shift
+      shift
+      ;;
+    -c|--cask)
+      CASK="--cask"
+      shift
+      ;;
+    -t|--tap)
+      TAP="${2}"
+      shift
+      shift
+      ;;
+    -f|--force)
+      FORCE="true"
+      shift
+      ;;
+    -s|--script)
+      SCRIPT="${2}"
+      shift
+      shift
+      ;;
+    --script-arg)
+      SCRIPT_ARGS+=("${2}")
+      shift
+      shift
+      ;;
+    -d|--dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    -v|--verbose)
+      export ULOGGER_VERBOSE="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+     -*)
+      ARGS+=("${2}")
+      shift
+      shift
+      ;;
+     *)
+      CMD="${1}"
+      shift
+      ;;
+  esac
+done
+
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="pkg"
+export ULOGGER_PREFIX="${CMD}"
+
+if [[ "$(os-type)" != "darwin" ]]; then
+    ulogger error "darwin-pkgmgr can only be used on darwin systems"
+    exit 1
+fi
+
+__handle_tap() {
+    ulogger info "tapping ${TAP}"
+    [[ "${DRY_RUN}" == "true" ]] && return 0
+    brew tap "${TAP}" || return 1
+}
+
+__search_pkg() {
+    brew search "${PKG}" && return 0 || return 1
+}
+
+__check_pkg() {
+    local is_cask="$([[ -z "${CASK}" ]] && echo "no" || echo "yes")"
+    ulogger info "checking brew for pkg=${PKG} (cask? ${is_cask})"
+    brew list "${PKG}" ${CASK} &> /dev/null && return 0 || return 1
+}
+
+__process_cmd() {
+    local cmd="${CMDS[${CMD}]}"
+
+    ulogger info "running 'brew ${cmd} ${PKG} ${CASK} ${ARGS[*]}'"
+    [[ "${DRY_RUN}" == "true" ]] && return 0
+    brew "${cmd}" "${PKG}" ${CASK} ${ARGS[@]} || return 1
+}
+
+__run_script() {
+    local script_path
+    script_path="${SCRIPTS_ROOT}/install/$(os-type)/${SCRIPT}.sh"
+
+    if [[ ! -f "${script_path}" ]]; then
+        ulogger info "script=${script_path} doesn't exist; falling back to os-agnostic path"
+        script_path="${SCRIPTS_ROOT}/install/generic/${SCRIPT}.sh"
+        [[ ! -f "${script_path}" ]] && ulogger error "os-agnostic script=${script_path} doesn't exist" && return 1
+    fi
+
+    ulogger info "running script=${script_path} w/ args=${SCRIPT_ARGS[*]}"
+    [[ -z "${DRY_RUN}" ]] && return 0
+
+    "${script_path}" ${SCRIPT_ARGS[@]} || return 1
+}
+
+if [[ -n "${SCRIPT}" ]]; then
+    __run_script && exit 0 || exit 1
+elif [[ -z "${SCRIPT}" ]] && [[ ${#SCRIPT_ARGS[@]} -gt 0 ]]; then
+    ulogger error "--script-arg should be used only w/ -s|--script"
+    exit 1
+fi
+
+if [[ -z "${TAP}" ]] && [[ -z "${PKG}" ]]; then
+    ulogger error "one of -p|--pkg or -t|--tap is required"
+    exit 1
+fi
+
+if [[ -n "${TAP}" ]]; then
+    __handle_tap && exit 0 || exit 1
+fi
+
+if [[ -z "${CMDS[${CMD}]+x}" ]]; then
+    CMDS_STR="$(echo "${!CMDS[*]}" | tr ' ' '|')"
+    ulogger error "-c|--cmd must be one of ${CMDS_STR}"
+    exit 1
+fi
+
+if [[ "${CMD}" == "search" ]]; then
+    __search_pkg && exit 0 || exit 1
+fi
+
+__check_pkg && INSTALLED=0 || INSTALLED=1
+[[ "${CMD}" == "check" ]] && exit "${INSTALLED}"
+
+if [[ ${INSTALLED} -eq 0 ]] && [[ "${CMD}" == "install" ]]; then
+    ulogger info "${PKG} is already installed"
+    [[ -z "${FORCE}" ]] && exit 0
+    ulogger info "-f|--force option detected; forcing install"
+elif [[ ${INSTALLED} -eq 1 ]] && [[ "${CMD}" != "install" ]]; then
+    ulogger error "cannot ${CMD} package that isn't installed"
+    exit 1
+fi
+
+__process_cmd && exit 0 || exit 1
+
