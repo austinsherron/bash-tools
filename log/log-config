@@ -101,18 +101,18 @@ function __get_default_type_from_env() {
 }
 
 function __get_user_config() {
-    tq "${CONFIG_PATH}" | jq
+    tq "${CONFIG_PATH}" -s | jq
 }
 
 function __get_default_config() {
-    tq "${DEFAULT_CONFIG_PATH}" | jq
+    tq "${DEFAULT_CONFIG_PATH}" -s | jq
 }
 
 function __get_from_config_file() {
     local path="${1}"
     shift
 
-    local value="$(tq "${path}" $@)"
+    local value="$(tq "${path}" $@ -s)"
     [[ "${value}" != "null" ]] && echo "${value}" | xargs || echo ""
 }
 
@@ -141,7 +141,7 @@ function __log_root() {
     local log_root="$(__get_from_user_config .root)"
 
     [[ -z "${log_root}" ]] && log_root="$(__get_from_default_config .root)"
-    [[ -z "${log_root}" ]] && log_root= "${LOG_ROOT:-}"
+    [[ -z "${log_root}" ]] && log_root="${LOG_ROOT:-}"
     [[ -n "${log_root}" ]] && echo "${log_root}" && return 0
 
     echo "[ERROR] unable to determine log root from config"

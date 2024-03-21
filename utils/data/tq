@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 
-USAGE="tq path [selector]"
+USAGE="tq path [selector] [-s]"
 
 usage() {
     echo "${USAGE}"
@@ -31,7 +31,7 @@ POSITIONAL ARGUMENTS
 
 OPTIONS
 
-    -s, --strict        optional, defaults to false; if provided, non-existent paths are treated as fatal erros instead of manifesting a empty (null) values
+    -s, --suppress      optional; if provided, errors will be ignored: script output will be empty, rc=0
     -h, --help          optional; display this message
 help
 }
@@ -40,9 +40,14 @@ help
 TOML_PATH=""
 SELECTOR="."
 ARGS=()
+SUPPRESS=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
+    -s|--suppress)
+      SUPPRESS="true"
+      shift
+      ;;
     -h|--help)
       help
       exit 0
@@ -55,14 +60,20 @@ while [[ $# -gt 0 ]]; do
 done
 
 
+function __handle_suppression() {
+    [[ "${SUPPRESS}" == "true" ]] && exit 0
+}
+
 # validate dependencies
 
 if ! which jq &> /dev/null; then
+    __handle_suppression
     echo "[ERROR] jq is required for tq"
     exit 1
 fi
 
 if ! which rq &> /dev/null; then
+    __handle_suppression
     echo "[ERROR] rq is required for tq"
     exit 1
 fi
@@ -76,6 +87,7 @@ ARGS=("${ARGS[@]:2}")
 # validate arguments
 
 if [[ ! -f "${TOML_PATH}" ]]; then
+    __handle_suppression
     echo "[ERROR] path (${TOML_PATH:-?}) must refer to a valid file"
     exit 1
 fi
