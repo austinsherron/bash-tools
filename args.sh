@@ -54,6 +54,35 @@ function validate_at_least_one() {
 }
 
 #######################################
+# Validates that a value is one of a constrained set of values.
+# Arguments:
+#   name: the name of the variable to validate
+#   val: the value to validate
+#   the set of values of which val must be a member to be considered valid
+# Outputs:
+#   Prints error message to stdout depending on the current log level (see: ulogger -h)
+# Returns:
+# 0 if the provided value is a member of the set of valid values, 1 otherwise
+#######################################
+function validate_one_of() {
+    local valid_vals=()
+
+    local name="${1}"
+    local val="${2}"
+    shift
+    shift
+
+    for valid_val in $@; do
+        valid_vals+=("${valid_val}")
+        [[ "${val}" == "${valid_val}" ]] && return 0
+    done
+
+    local valid_vals_str="$(echo "${valid_vals[*]}" | tr " " "|")"
+    echo "[ERROR] ${name} must be one of '${valid_vals_str}', not '${val}'"
+    erturn 1
+}
+
+#######################################
 # Validates that nreq == nactual.
 # Arguments:
 #   nreq: the number against which to validate
