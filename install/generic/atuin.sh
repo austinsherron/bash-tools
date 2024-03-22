@@ -11,7 +11,6 @@ fi
 
 echo "[INFO] installing atuin"
 bash <(curl https://raw.githubusercontent.com/atuinsh/atuin/main/install.sh)
-atuin import auto
 
 if [[ -z "${COMPLETION_DIR+x}" ]]; then
     echo "[WARN] unable to install atuin completions: COMPLETION_DIR is unset"
