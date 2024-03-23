@@ -18,5 +18,5 @@ if [[ -f "${DST}/${PKG}" ]]; then
     exit 0
 fi
 
-cd $DST && curl -fLO "${URL}"
+cd "${DST}" && curl -fLO "${URL}"
 

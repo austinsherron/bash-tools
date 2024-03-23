@@ -78,7 +78,7 @@ if ! __install_gvm; then
     exit 1
 fi
 
-for VERSION in ${VERSIONS[@]}; do
+for VERSION in "${VERSIONS[@]}"; do
     if __is_go_version_installed "${VERSION}"; then
         echo "[INFO] go version=${VERSION} is already installed"
     else

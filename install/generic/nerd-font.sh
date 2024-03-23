@@ -100,5 +100,5 @@ if [[ ! ${FULL_URL} == *.ttf ]] && [[ ! ${FULL_URL} == *.otf ]]; then
     exit 1
 fi
 
-cd "${FONT_DIR}" && curl -fLO ${FULL_URL}
+cd "${FONT_DIR}" && curl -fLO "${FULL_URL}"
 
