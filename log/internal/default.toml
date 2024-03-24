@@ -1,11 +1,9 @@
 root = "${HOME}/.local/state/logs"
-
-[type]
-default = "default"
+type = "default"
 
 [level]
 current = "WARN"
 default = "WARN"
 
-[path]
-default = "default.log"
+[default]
+extension = "log"

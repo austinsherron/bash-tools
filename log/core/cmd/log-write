@@ -2,11 +2,8 @@
 
 set -Eeuo pipefail
 
-source /etc/profile.d/shared_paths.sh
-source "${CODE_ROOT}/lib/bash/utils.sh"
 
-
-USAGE="ulogger level msg {msg} [-p prefix] [-t type] [-s normal|notify|log|force] [-n] [-c path]"
+USAGE="log-write level msg {msg} [-p prefix] [-t type] [-s normal|notify|log|force] [-n] [-c path]"
 
 usage() {
     echo "${USAGE}"
@@ -67,9 +64,15 @@ STRATEGY="NORMAL"
 NO_FMT=""
 CONFIG_PATH=""
 
+
+__to_upper() {
+    local str="${1}"
+    echo "${str}" | tr '[:lower:]' '[:upper:]'
+}
+
 __process_positional() {
     if [[ -z "${LOG_LEVEL}" ]]; then
-        LOG_LEVEL="$(to_upper "${1}")"
+        LOG_LEVEL="$(__to_upper "${1}")"
         log-level "${LOG_LEVEL}" -v || exit 1
     else
       MSGS="$([[ -z "${MSGS}" ]] && echo "${1}" || echo "${MSGS} ${1}")"
@@ -77,14 +80,14 @@ __process_positional() {
     fi
 }
 
-[[ -n "${ULOGGER_PREFIX+x}" ]] && PREFIX="$(to_upper "${ULOGGER_PREFIX}")"
+[[ -n "${ULOGGER_PREFIX+x}" ]] && PREFIX="$(__to_upper "${ULOGGER_PREFIX}")"
 [[ -n "${ULOGGER_VERBOSE+x}" ]] && [[ "${ULOGGER_VERBOSE}" == "true" ]] && STRATEGY="FORCE"
-[[ -n "${ULOGGER_STRATEGY+x}" ]] && STRATEGY="$(to_upper "${ULOGGER_STRATEGY}")"
+[[ -n "${ULOGGER_STRATEGY+x}" ]] && STRATEGY="$(__to_upper "${ULOGGER_STRATEGY}")"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -p|--prefix)
-      [[ -z "${PREFIX}" ]] && PREFIX="$(to_upper "${2}")"
+      [[ -z "${PREFIX}" ]] && PREFIX="$(__to_upper "${2}")"
       shift
       shift
       ;;
@@ -94,7 +97,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -s|--strategy)
-      [[ -z "${STRATEGY}" ]] && STRATEGY="$(to_upper "${2}")"
+      [[ -z "${STRATEGY}" ]] && STRATEGY="$(__to_upper "${2}")"
       shift
       shift
       ;;
@@ -145,7 +148,7 @@ LOG_PATH="$(log-config -f path -c "${CONFIG_PATH}")"
 
 # format log line, if necessary
 if [[ -z "${NO_FMT}" ]]; then
-    PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(to_upper "${PREFIX}")] " || echo "")"
+    PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(__to_upper "${PREFIX}")] " || echo "")"
     LOG_LINE="[${LOG_LEVEL}] ${PREFIX}${LOG_LINE} ($(date))"
 fi
 

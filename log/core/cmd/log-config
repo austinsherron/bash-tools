@@ -2,34 +2,44 @@
 
 set -Eeuo pipefail
 
-source /etc/profile.d/shared_paths.sh
-source "${CODE_ROOT}/lib/bash/utils.sh"
 
+# TODO: create a config schema and a fully defined example config.
 
-declare -A FIELDS=([level]=1 [path]=1 [dir]=1 [root]=1 [type]=1)
 declare -A QUERY_TYPES=([default]=1 [user]=1)
+declare -A FIELDS=(
+    [level]="the current log level, considering type specific overrides"
+    [path]="the log file path, considering type specific config"
+    [dir]="the log file parent dir, considering type specific config"
+    [root]="the global log root dir"
+    [type]="the current logger type, which informs configuration "
+    [config]="the path to the current user defined logger config file"
+)
 
-function __is_field() {
-    local field="${1}"
-    [[ -n "${FIELDS[${field}]+x}" ]] && return 0 || return 1
-}
+declare -A FIELD_ACTIONS=(
+    [level]="__get_level"
+    [path]="__get_path"
+    [dir]="__get_dir"
+    [type]="__get_type"
+    [root]="__get_root"
+    [config]="__get_config"
+)
 
 function __fields() {
     local sep="${1:-|}"
-    join_by "${sep}" ${!FIELDS[@]}
+    echo "${!FIELDS[@]}" | tr " " "${sep}"
 }
 
-function __is_query_type() {
-    local query_type="${1}"
-    [[ -n "${QUERY_TYPES[${query_type}]+x}" ]] && return 0 || return 1
+function __field_descriptions() {
+    for field in "${!FIELDS[@]}"; do
+        echo "       * ${field} - ${FIELDS[${field}]}"
+    done
 }
 
 function __query_types() {
-    local sep="${1:-|}"
-    join_by "${sep}" ${!QUERY_TYPES[@]}
+    echo "${!QUERY_TYPES[@]}" | tr " " "|"
 }
 
-USAGE="log-config [-f $(__fields)] [-q $(__query_types)] [-t type] [-c path]"
+USAGE="log-config [-f field] [-q $(__query_types)] [-t type] [-c path]"
 
 usage() {
     echo "${USAGE}"
@@ -47,6 +57,10 @@ DESCRIPTION
         * level.current = "WARN" - can be set via \$CURRENT_LOG_LEVEL
         * level.default = "WARN" - can be set via \$DEFAULT_LOG_LEVEL
         * path.default = "default.log" - derived from type.default, if not set
+
+    Config fields available for reading via -f include:
+
+$(__field_descriptions)
 
 USAGE
 
@@ -66,6 +80,7 @@ help
 FIELD=""
 QUERY=""
 TYPE=""
+EDIT=""
 
 CONFIG_PATH="${XDG_CONFIG_HOME}/ulogger/config.toml"
 DEFAULT_CONFIG_PATH="${TOOLS_ROOT}/log/config/default.toml"
@@ -92,6 +107,10 @@ while [[ $# -gt 0 ]]; do
     -c|--config)
       [[ -n "${2}" ]] && CONFIG_PATH="${2}"
       shift
+      shift
+      ;;
+    -e|--edit)
+      EDIT="true"
       shift
       ;;
     -h|--help)
@@ -132,8 +151,7 @@ function __get_from_config_file() {
     local path="${1}"
     shift
 
-    local value="$(tq "${path}" $@ -s)"
-    [[ "${value}" != "null" ]] && echo "${value}" | xargs || echo ""
+    tq "${path}" "$@" -s | xargs
 }
 
 function __get_from_default_config() {
@@ -148,7 +166,7 @@ function __get_from_user_config() {
 
 function __get_from_config() {
     local field="${1}"
-    local value="$(__get_from_user_config "${field}")"
+    local -r value="$(__get_from_user_config "${field}")"
 
     if [[ -z "${value}" ]]; then
         __get_from_default_config "${field}"
@@ -158,127 +176,127 @@ function __get_from_config() {
 }
 
 function __log_root() {
-    local log_root="$(__get_from_user_config .root)"
+    local log_root=""
 
-    [[ -z "${log_root}" ]] && log_root="$(__get_from_default_config .root)"
+    [[ -z "${log_root}" ]] && log_root="$(__get_from_config .root)"
     [[ -z "${log_root}" ]] && log_root="${LOG_ROOT:-}"
     [[ -n "${log_root}" ]] && echo "${log_root}" && return 0
 
-    echo "[ERROR] unable to determine log root from config"
-    exit 1
+    echo "[ERROR] unable to determine log root from config" && exit 1
 }
 
 function __default_type() {
-    __get_from_config ".type.default"
+    local -r default_type="$(__get_from_config .type)"
+    [[ -z "${default_type}" ]] && __get_default_type_from_env
+    echo "${default_type}"
 }
 
 function __get_log_type() {
-    if [[ -n "${TYPE}" ]]; then
-        echo "${TYPE}"
-        return 0
-    fi
+    [[ -n "${TYPE}" ]] && echo "${TYPE}" && return 0
 
-    local type="$(__default_type)"
-    [[ -z "${type}" ]] && type="$(__get_default_type_from_env)"
+    local -r type="$(__default_type)"
     [[ -n "${type}" ]] && echo "${type}" && return 0
 
-    echo "[ERROR] unable to determine logger type from config"
-    exit 1
+    echo "[ERROR] unable to determine logger type from config" && exit 1
 }
 
 function __current_log_level() {
-    local type="$(__get_log_type)"
-    local level="$(__get_from_user_config .level.overrides."${type}")"
+    local type
+    local level
+
+    type="$(__get_log_type)"
+    level="$(__get_from_config ."${type}.level")"
 
     [[ -z "${level}" ]] && level="$(__get_from_config .level.current)"
     [[ -z "${level}" ]] && level="$(__get_from_config .level.default)"
     [[ -z "${level}" ]] && level="$(__get_log_level_from_env)"
     [[ -n "${level}" ]] && echo "${level}" && return 0
 
-    echo "[ERROR] unable to determine current log level from config"
-    exit 1
+    echo "[ERROR] unable to determine current log level from config" && exit 1
 }
 
 function __get_type_root() {
-    __get_from_config ".path.nested.${type}"
+    local type="${1}"
+    __get_from_config ".${type}.directory"
 }
 
 function __get_type_file() {
     local type="${1}"
-    local type_file="$(__get_from_config ".path.${type}")"
+    local -r ext="$(__get_from_config ".${type}.extension")"
+    local -r type_file="$(__get_from_config ".${type}.file")"
+    echo "${type_file:-${type}}.${ext:-log}"
+}
 
-    [[ -z "${type_file}" ]] && type_file="${type}.log"
-    [[ -n "${type_file}" ]] && echo "${type_file}" && return 0
+function __make_path() {
+    local path=""
 
-    echo "[ERROR] unable to determine logger type path from config"
-    exit 1
+    [[ $# -ge 1 ]] && path="${1}" && shift
+
+    while [[ $# -gt 0 ]]; do
+        [[ -n "${1}" ]] && path="${path}/${1}" ; shift
+    done
+
+    echo "${path}"
 }
 
 function __get_type_dir_path() {
-    local type="${1-}"
+    local type="${1:-}"
     local path_parts=()
 
     [[ -z "${type}" ]] && type="$(__get_log_type)"
     path_parts+=("$(__log_root)")
     path_parts+=("$(__get_type_root "${type}")")
 
-    make_path ${path_parts[@]}
+    __make_path "${path_parts[@]}"
 }
 
 function __get_full_type_path() {
-    local type="$(__get_log_type)"
-    local path_parts=()
+    local type
+    type="$(__get_log_type)"
 
+    local path_parts=()
     path_parts+=("$(__get_type_dir_path "${type}")")
     path_parts+=("$(__get_type_file "${type}")")
 
-    make_path ${path_parts[@]}
+    __make_path "${path_parts[@]}"
 }
 
 function __handle_query() {
-    if ! __is_query_type "${QUERY}"; then
-        echo "[ERROR] -q|--query must be one of '$(__query_types)', not '${QUERY}'"
+    if [[ -z "${!QUERY_TYPES[${QUERY}]}" ]]; then
+        echo "-q|--query must be one of '$(__query_types)' not '${QUERY}'"
         return 1
     fi
 
     eval "__get_${QUERY}_config" || return 1
 }
 
-__get_level() { __current_log_level ; }
-__get_path() { __get_full_type_path ; }
-__get_dir() { __get_type_dir_path ; }
-__get_root() { __log_root ; }
-__get_type() { __get_log_type ; }
+function __get_level() { __current_log_level ; }
+function __get_path() { __get_full_type_path ; }
+function __get_dir() { __get_type_dir_path ; }
+function __get_root() { __log_root ; }
+function __get_type() { __get_log_type ; }
+function __get_config() { echo "${CONFIG_PATH}" ; }
 
 function __handle_field() {
-    if ! __is_field "${FIELD}"; then
-        echo "[ERROR] -f|--field must be one of '$(__fields)', not '${FIELD}'"
+    if [[ -z "${FIELDS[${FIELD}]+x}" ]]; then
+        echo "-f|--field (${FIELD}) is not a valid field"
         return 1
     fi
 
-    eval "__get_${FIELD}" || return 1
+    "${FIELD_ACTIONS[${FIELD}]}" || return 1
 }
 
-# dependency validation
-
-if ! which tq &> /dev/null; then
-    echo "[ERROR] tq is required for log-config"
-    exit 1
-fi
-
-# arg validation
-
 if [[ ! -s "${CONFIG_PATH}" ]]; then
-    echo "[ERROR] -c|--config must be valid file"
-    exit 1
+    echo "[ERROR] -c|--config path must refer to a valid file"
 fi
 
-if [[ -n "${QUERY}" ]]; then
+if [[ -n "${EDIT}" ]]; then
+    ${EDITOR} "${CONFIG_PATH}"
+elif [[ -n "${QUERY}" ]]; then
     __handle_query || exit 1
 elif [[ -n "${FIELD}" ]]; then
     __handle_field || exit 1
 else
-    echo "[ERROR] one of -f|--field or -q|--query is required"
-    exit 1
+    echo "[ERROR] one of -f|--field or -q|--query is required" && exit 1
 fi
 
