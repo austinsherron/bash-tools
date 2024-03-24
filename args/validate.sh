@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+source /etc/profile.d/shared_paths.sh
+source "${CODE_ROOT}/lib/bash/args/check.sh"
+
 
 #######################################
 # Validates that variable w/ name is non-empty.
@@ -120,10 +123,7 @@ function validate_one_of() {
     shift
     shift
 
-    for valid_val in $@; do
-        valid_vals+=("${valid_val}")
-        [[ "${val}" == "${valid_val}" ]] && return 0
-    done
+    is_one_of "${val}" $@ && return 0
 
     local valid_vals_str="$(echo "${valid_vals[*]}" | tr " " "|")"
     ulogger error "${name} must be one of '${valid_vals_str}', not '${val}'"
@@ -173,15 +173,15 @@ function validate_min_args() {
     local nactual=$2
     local caller="${3}"
     local exclusive="${4:-}"
-    local sign=">" && [[ -z "${exclusive}" ]] && sign=">="
+    local sign="$([[ -z "${exclusive}" ]] && echo ">=" || echo ">")"
 
-    if [[ -z "${exclusive}" ]] && [[ $nactual -ge $min ]];
-        then return 0
-    elif [[ "${exclusive}" == "true" ]] && [[ $nactual -gt $min ]];
-        then return 0
+    if [[ -z "${exclusive}" ]] && [[ $nactual -ge $min ]]; then
+        return 0
+    elif [[ "${exclusive}" == "true" ]] && [[ $nactual -gt $min ]]; then
+        return 0
     fi
 
-    local arg="argument" && [[ $min -gt 1 ]] && arg="arguments"
+    local arg="$([[ $min -gt 1 ]] && echo "arguments" || echo "argument")"
     ulogger error "${caller} requires ${sign} $min ${arg} but got $nactual"
     return 1
 }
@@ -203,7 +203,8 @@ function validate_max_args() {
     local nactual=$2
     local caller="${3}"
     local exclusive="${4:-}"
-    local sign="<" && [[ -z "${exclusive}" ]] && sign="<="
+    local sign="" && [[ -z "${exclusive}" ]] && sign="<="
+    local sign="$([[ -z "${exclusive}" ]] && echo "<=" || echo "<")"
 
     if [[ -z "${exclusive}" ]] && [[ $nactual -le $max ]];
         then return 0
@@ -211,7 +212,7 @@ function validate_max_args() {
         then return 0
     fi
 
-    local arg="argument" && [[ $max -gt 1 ]] && arg="arguments"
+    local arg="$([[ $max -gt 1 ]] && echo "arguments" || echo "argument")"
     ulogger error "${caller} requires ${sign} $max ${arg} but got $nactual"
     return 1
 }
@@ -353,14 +354,10 @@ function validate_toml_key() {
 function validate_installed() {
     local caller="${1}" && shift
 
-    while [[ $# -gt 0 ]]; do
-        local pkg="${1}" && shift
+    check_installed $@ && return 0
 
-        if ! which "${pkg}" &> /dev/null; then
-            ulogger error "${caller} requires that ${pkg} be installed"
-            return 1
-        fi
-    done
+    local pkgs="$(join_by ", " $@)"
+    ulogger error "${caller} requires that these packages be installed: ${pkgs}"
 }
 
 #######################################

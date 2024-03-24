@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-
 source /etc/profile.d/shared_paths.sh
 source "${CODE_ROOT}"/lib/bash/args/validate.sh
 
@@ -136,6 +135,24 @@ function os-type() {
 }
 
 #######################################
+# Checks if the current system is linux based.
+# Returns:
+#   0 if the current system is linux based, 1 otherwise
+#######################################
+function is_linux() {
+    [[ "$(os-type)" == "linux" ]] || return 1
+}
+
+#######################################
+# Checks if the current system is darwin based.
+# Returns:
+#   0 if the current system is darwin based, 1 otherwise
+#######################################
+function is_darwin() {
+    [[ "$(os-type)" == "darwin" ]] || return 1
+}
+
+#######################################
 # Checks if the provided function exists.
 # Arguments:
 #   fn_name: name of the function to check
@@ -148,17 +165,5 @@ function fn_exists() {
 
     local fn_name="${1}"
     [[ $(type -t "${fn_name}") == function ]] && return 0 || return 1
-}
-
-#######################################
-# Checks if the provided value is truthy (i.e.: == "true" or 0).
-# Arguments:
-#   val: the value to check
-# Returns
-#   0 if val == "true" or 0, 1 otherwise
-#######################################
-function is_true() {
-    local val="${1}"
-    [[ "${val}" == "true" || $val -eq 0 ]] && return 0 || return 1
 }
 
