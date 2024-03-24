@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+
+USAGE="log-explore [-v [type]] [-l] [-t]"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -v, --view
+    -l, --list
+    -t, --tree
+    -h, --help
+help
+}
+
+
+# MODE=""
+# FILTERS=()
+LS_CMD="$(which lsd &> /dev/null && echo "lsd" || echo "ls")"
+
+function __open_in_editor() {
+    local field="${1}"
+    local type="${2:-}"
+
+    local -r log_path="$(log-config -f "${field}" -t "${type}")"
+    "${EDITOR}" "${log_path}"
+}
+
+function __list() {
+    "${LS_CMD}" "$@" && return 0 || return 1
+}
+
+function __tree() {
+    validate_installed "log-explorer" "tree"
+    tree "$@" && return 0 || return 1
+}
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -v|--view)
+      __open_in_editor "path" "${2:-}" && exit 0 || exit 1
+      ;;
+    -l|--list)
+      __list "$@"
+      ;;
+    -t|--tree)
+      __tree "$@"
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+__open_in_editor "root"
+

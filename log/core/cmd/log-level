@@ -2,8 +2,7 @@
 
 set -Eeuo pipefail
 
-source /etc/profile.d/shared_paths.sh
-source "${CODE_ROOT}/lib/bash/utils.sh"
+[[ -s /etc/profile.d/shared_paths.sh ]] && source /etc/profile.d/shared_paths.sh
 
 
 USAGE="log-level LOG_LEVEL [-v] [-t type] [-c path]"
@@ -91,7 +90,7 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      LOG_LEVEL="$(to_upper "${1}")"
+        LOG_LEVEL="$(echo "${1}" | tr '[:lower:]' '[:upper:]')"
       shift
       ;;
   esac
