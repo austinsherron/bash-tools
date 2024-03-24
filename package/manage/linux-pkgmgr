@@ -41,11 +41,10 @@ POSITIONAL ARGUMENTS
 OPTIONS
 
     -p, --pkg           optional if -s|--script is used; the name of the package on which to perform an action; arguments/flags to package managers can be provided by providng quoted, multi-token strings
-    -m, --mgr           must be one of "apt", "flatpak", or "snap"; the package manager to use
+    -m, --mgr           must be one of "apt", "flatpak", or "snap"; the package manager to use; can also be be used w/ "script", where -p|--pkg is the name of a script in
+                        "\${SCRIPTS_ROOT}/install/[os]|generic" to run; at the time of writing, scripts work only w/ CMD = install
     -a, --ask           optional; if provided, package managers will ask for confirmation (where supported, i.e.: snap doesn't support this feature)
     -f, --force         optional; if provided, install command will be executed even if package is already installed
-    -s, --script        optional; the name of a script in "\${SCRIPTS_ROOT}/install/[os]|generic" to run; if provided, all params except -v|--verbose and -d|--dry-run will be ignored
-    --script-arg        optional, multi-valued; only valid w/ -s|--script; args to pass to -s|--script
     -d, --dry-run       optional; if present, no state changes are made
     -v, --verbose       optional; if present, print to stdout messages about the script's progress
     -h, --help          display this message
@@ -56,6 +55,7 @@ declare -A CMDS=([check]=1 [search]=1 [install]=1 [update]=1 [remove]=1)
 declare -A APT=([install]="install" [remove]="remove" [update]="upgrade")
 declare -A FP=([install]="install" [remove]="uninstall" [update]="upgrade")
 declare -A SNAP=([install]="install" [remove]="remove" [update]="refresh")
+declare -A SCRIPT=([install]="install")
 
 PKG=""
 MGR=""
@@ -63,8 +63,6 @@ CMD="install"
 CONFIRM="-y"
 ARGS=()
 FORCE=""
-SCRIPT=""
-SCRIPT_ARGS=()
 DRY_RUN=""
 
 while [[ $# -gt 0 ]]; do
@@ -85,16 +83,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     -f|--force)
       FORCE="true"
-      shift
-      ;;
-    -s|--script)
-      SCRIPT="${2}"
-      shift
-      shift
-      ;;
-    --script-arg)
-      SCRIPT_ARGS+=("${2}")
-      shift
       shift
       ;;
     -d|--dry-run)
@@ -121,54 +109,51 @@ done
 export ULOGGER_PREFIX="${CMD}"
 
 if [[ "$(os-type)" == "linux" ]]; then
-    ulogger error "linux-pkgmgr can only be used w/ -s|--script on linux systems"
+    ulogger error "linux-pkgmgr can only be used on linux systems"
     exit 1
 fi
 
 __apt_cmd() {
     local cmd="${APT[${CMD}]}"
+    local -r full_cmd="$(echo "sudo apt ${cmd} ${PKG} ${ARGS[*]}" | xargs)"
 
-    ulogger info "running 'apt ${cmd} ${PKG}'"
-    [[ -z "${DRY_RUN}" ]] && sudo apt update "${CONFIRM}" && sudo apt "${cmd}" ${PKG} ${ARGS[@]}
+    ulogger info "running '${full_cmd}'"
+    [[ -z "${DRY_RUN}" ]] && sudo apt update "${CONFIRM}" && $full_cmd
 }
 
 __flatpak_cmd() {
     local cmd="${FP[${CMD}]}"
+    local -r full_cmd="$(echo "sudo flatpak ${cmd} ${PKG} ${ARGS[*]}" | xargs)"
 
     [[ "${PKG}" == *"."* ]] && [[ "${cmd}" == "install" ]] && PKG="flathub ${PKG}"
-    ulogger info "running 'flatpak ${cmd} ${PKG}'"
-    [[ -z "${DRY_RUN}" ]] && sudo flatpak "${cmd}" ${PKG} ${ARGS[@]}
+    ulogger info "running '${full_cmd}'"
+    [[ -z "${DRY_RUN}" ]] && $full_cmd
 }
 
 __snap_cmd() {
     local cmd="${SNAP[${CMD}]}"
+    local -r full_cmd="$(echo "sudo snap ${cmd} ${PKG} ${ARGS[*]}" | xargs)"
 
-    ulogger info "running 'snap ${cmd} ${PKG} ${ARGS[*]}'"
-    [[ -z "${DRY_RUN}" ]] && sudo snap "${cmd}" ${PKG} ${ARGS[@]}
+    ulogger info "running '${full_cmd}'"
+    [[ -z "${DRY_RUN}" ]] && $full_cmd
 }
 
 __run_script() {
+    [[ -z "${SCRIPT[${CMD}]+x}" ]] && ulogger error "cannot use cmd=${CMD} w/ mgr=script" && return 1
+
     local script_path
-    script_path="${SCRIPTS_ROOT}/install/$(os-type)/${SCRIPT}.sh"
+    script_path="${SCRIPTS_ROOT}/install/$(os-type)/${PKG}.sh"
 
     if [[ ! -f "${script_path}" ]]; then
         ulogger info "script=${script_path} doesn't exist; falling back to os-agnostic path"
-        script_path="${SCRIPTS_ROOT}/install/generic/${SCRIPT}.sh"
+        script_path="${SCRIPTS_ROOT}/install/generic/${PKG}.sh"
         [[ ! -f "${script_path}" ]] && ulogger error "os-agnostic script=${script_path} doesn't exist" && return 1
     fi
 
-    ulogger info "running script=${script_path} w/ args=${SCRIPT_ARGS[*]}"
-    [[ -z "${DRY_RUN}" ]] && return 0
-
-    "${script_path}" ${SCRIPT_ARGS[@]} || return 1
+    local -r full_cmd="$(echo "${script_path} ${ARGS[*]}" | xargs)"
+    ulogger info "running '${full_cmd}'"
+    [[ -z "${DRY_RUN}" ]] && $full_cmd
 }
-
-if [[ -n "${SCRIPT}" ]]; then
-    __run_script && exit 0 || exit 1
-elif [[ -z "${SCRIPT}" ]] && [[ ${#SCRIPT_ARGS[@]} -gt 0 ]]; then
-    ulogger error "--script-arg should be used only w/ -s|--script"
-    exit 1
-fi
 
 if [[ -z "${PKG}" ]]; then
     ulogger error "-p|--pkg is required"
@@ -213,32 +198,25 @@ ARGS+=("${PKG_ARR[@]:1}")
 [[ "${CMD}" == "check" ]] && [[ -n "${MGR}" ]] && CHECK_MGR="-m ${MGR}" || CHECK_MGR=""
 { check-pkg -p "${PKG}" ${CHECK_MGR}; RC="$?"; } || true
 
-if [[ "${CMD}" == "check" ]]; then
-    exit ${RC}
-fi
+[[ "${CMD}" == "check" ]] && exit $RC
 
 # propagate unexpected error
-if [[ ${RC} -eq 2 ]]; then
+if [[ $RC -eq 2 ]]; then
     exit 1
-elif [[ ${RC} -eq 0 ]] && [[ "${CMD}" == "install" ]]; then
+elif [[ $RC -eq 0 ]] && [[ "${CMD}" == "install" ]]; then
     ulogger info "${PKG} is already installed"
     [[ -z "${FORCE}" ]] && exit 0
     ulogger info "-f|--force option detected; forcing install"
-elif [[ ${RC} -eq 1 ]] && [[ "${CMD}" != "install" ]]; then
+elif [[ $RC -eq 1 ]] && [[ "${CMD}" != "install" ]]; then
     ulogger error "cannot ${CMD} package that isn't installed"
     exit 1
 fi
 
 case "${MGR}" in
-    apt)
-      __apt_cmd
-      ;;
-    flatpak)
-      __flatpak_cmd
-      ;;
-    snap)
-      __snap_cmd
-      ;;
+    apt) __apt_cmd ;;
+    flatpak) __flatpak_cmd ;;
+    snap) __snap_cmd ;;
+    script) __run_script ;;
     *)
       ulogger error "-m|--mgr must be one of 'apt|flatpak|snap', not ${MGR}"
       exit 1

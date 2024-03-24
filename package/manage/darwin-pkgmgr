@@ -26,7 +26,7 @@ DESCRIPTION
 
     Packages are installed only if they aren't already, unless -f|--force is provided. Similarly, packages are only updated/removed if they already exist in the system.
 
-    Can also used be to run installation scripts in "\${SCRIPTS_ROOT}/install/darwin|generic".
+    Can also used be to run installation scripts in "\${SCRIPTS_ROOT}/install/darwin|generic" w/ --script.
 
     Note: intended for use w/ darwin based systems.
 
@@ -44,10 +44,9 @@ OPTIONS
     -c, --cask          optional; if provided, indicates that -p|--pkg should be treated as a cask
     -t, --tap           optional; indicates that the provided "repo" should be tapped
     -f, --force         optional; if provided, install command will be executed even if package is already installed
+    -m, --mgr           optional; exists primarily to make the pkgmgr api consistent
     -s, --script        optional; the name of a script in "\${SCRIPTS_ROOT}/install/[os]|generic" to run; if provided, all params except -v|--verbose and -d|--dry-run will be ignored
-    --script-arg        optional, multi-valued; only valid w/ -s|--script; args to pass to -s|--script
     *                   optional; arbitrary params/args to pass directly to brew; WARN: cmd must be specified (can't use defaulting) if using wildcard arguments
-    -m, --mgr           optional; exists to make the pkgmgr api consistent; at the time of writing, this value is ignored
     -d, --dry-run       optional; if present, no state changes are made
     -v, --verbose       optional; if present, print to stdout messages about the script's progress
     -h, --help          display this message
@@ -143,10 +142,12 @@ __check_pkg() {
 
 __process_cmd() {
     local cmd="${CMDS[${CMD}]}"
+    local -r full_cmd="$(echo "brew ${cmd} ${PKG} ${CASK} ${ARGS[*]}" | xargs)"
 
-    ulogger info "running 'brew ${cmd} ${PKG} ${CASK} ${ARGS[*]}'"
+    ulogger info "running '${full_cmd}'"
     [[ "${DRY_RUN}" == "true" ]] && return 0
-    brew "${cmd}" "${PKG}" ${CASK} "${ARGS[@]}" || return 1
+
+    $full_cmd || return 1
 }
 
 __run_script() {
@@ -180,7 +181,6 @@ if [[ ${#ARGS[@]} -ge 1 ]]; then
 fi
 
 [[ -z "${CMD}" ]] && CMD="install"
-ulogger info "attempting ${CMD} of package=${PKG} (cask: ${CASK}) (args: ${ARGS[*]})"
 
 if [[ -n "${TAP}" ]]; then
     __handle_tap && exit 0 || exit 1
