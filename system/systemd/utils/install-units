@@ -13,7 +13,7 @@ help() {
 cat <<help
 DESCRIPTION
 
-    This script looks in dir -d for systemd units of type(s) passed via -t (as well as .service units), and if found, installs them. Installation in this context means 
+    This script looks in dir -d for systemd units of type(s) passed via -t (as well as .service units), and if found, installs them. Installation in this context means
     cp'ing them to the /usr/lib/systemd/ dir relevant to the owner specified by -o.
 
     Note: this script does not call \`systemctl enable\`.

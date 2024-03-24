@@ -2,39 +2,52 @@
 
 set -Eeuo pipefail
 
-source /etc/profile.d/shared_paths.sh
+
+INSTALL_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 || true ; pwd -P)"
+TOOLS_ROOT="$(dirname "${INSTALL_DIR}")"
+CODE_ROOT="$(dirname "$(dirname "${INSTALL_DIR}")")"
+ULOG_ROOT="${TOOLS_ROOT}/log"
+
+source "${ULOG_ROOT}/internal/log.sh"
 source "${CODE_ROOT}/lib/bash/utils.sh"
 
+OS_TYPE="$(os-type)"
 
-DEPLOY="${TOOLS_ROOT}"/system/deploy/deploy
-ULOGGER="${TOOLS_ROOT}"/log/ulogger
+export INSTALL_DIR
+export TOOLS_ROOT
+export CODE_ROOT
+export ULOG_ROOT
+export OS_TYPE
 
-export OS_TYPE="$(os-type)"
-INSTALL_TOOLS_OS="${TOOLS_ROOT}/install/${OS_TYPE}/main.sh"
+function __deploy_ulogger() {
+    "${ULOG_ROOT}/install.sh"
+    export ULOGGER_TYPE="install"
+    export ULOGGER_PREFIX="tools"
+}
 
-"${ULOGGER}" info "installing tools repo for os=${OS_TYPE}"
-"${ULOGGER}" info "installing common tool packages"
+function __deploy_deployer() {
+    "${TOOLS_ROOT}/package/deploy/deploy" --self
+}
 
-"${ULOGGER}" info "deploying log module"
-"${DEPLOY}" log
+function __deploy_common() {
+    deploy -s package manage
+    deploy -s system config
+    deploy -s system snapshot
+    deploy -s utils data
+    deploy -s utils shell
+    deploy -s utils secrets
+    deploy -s utils shell
+    deploy -s utils web
+}
 
-ulogger info "deploying system/deploy module"
-"${DEPLOY}"  -s system deploy
+function __install_os_specific() {
+    "${TOOLS_ROOT}/install/${OS_TYPE}/main.sh"
+}
 
-ulogger info "deploying system/config module"
-deploy -s system config
+log::info "installing tools repo"
 
-ulogger info "deploying system/snapshot module"
-deploy -s system snapshot
-
-ulogger info "deploying utils/secrets module"
-deploy -s utils secrets
-
-ulogger info "deploying utils/shell module"
-deploy -s utils shell
-
-ulogger info "deploying utils/web module"
-deploy -s utils web
-
-"${INSTALL_TOOLS_OS}"
+__deploy_ulogger
+__deploy_deployer
+__deploy_common
+__install_os_specific
 

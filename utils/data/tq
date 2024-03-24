@@ -94,6 +94,7 @@ fi
 
 # execute
 
-OUT="$(cat "${TOML_PATH}" | rq -t | rq -J | jq "${SELECTOR}" ${ARGS[*]})"
+# shellcheck disable=SC2068
+OUT="$(cat "${TOML_PATH}" | rq -t | rq -J | jq "${SELECTOR}" ${ARGS[@]})"
 [[ "${OUT}" != "null" ]] && echo "${OUT}" || echo ""
 

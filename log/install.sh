@@ -73,7 +73,7 @@ function __install_ulogger_if_necessary() {
 function __install_dependencies_if_necessary() {
     if ! which rq &> /dev/null; then
         echo "[INFO] installing rq"
-        brew install rq || exit 1
+        pkgmgr install -p rq --no-quarantine -m script || exit 1
     else
         echo "[INFO] rq already installed"
     fi
