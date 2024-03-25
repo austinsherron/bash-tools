@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+
+usage() {
+    echo "usage: git split-repo [<options>] <directory>"
+}
+
+help() {
+cat <<help
+GIT-SPLIT-REPO(1)
+
+NAME
+
+    git split-repo - Split a repo subdirectory into a new, standalone repo.
+
+SYNOPSIS
+
+    git split-repo [-r|--repo <new-repo-path>] [-b|--branch <initial-branch>]
+                [--split-branch <split-branch>] [--rm] [--keep-split] [--dry-run]
+                [-v|--verbose] <directory>
+
+DESCRIPTION
+
+    Splits a subdirectory from the current repo into a new, standalone repository. Optionally removes the subdirectory from the current repo after a successful split.
+
+OPTIONS
+
+    -r, --repo          optional, defaults to ../<directory>-<repository>; the path to the new repo
+    -b, --branch        optional, defaults to the "TRUNK" env var, if set; the name of the new repo's initial branch
+    --split-branch      optional, defaults to split-<dir-name>-from-<repository>; the name of the temporary branch used to perform the split
+    --rm                optional; if present, removes directory from the current repo after a successful split
+    --keep-split        optional; if present, keep the temporary branch used to perform the split
+    --dry-run           optional; if present, no state changes are made
+    -v, --verbose       optional; if present, the script will print to stdout messages about the script's progress
+    -h, --help          optional; display this message
+help
+}
+
+
+THIS_REPO=""
+DIR_PATH=""
+DST_REPO=""
+DST_PATH=""
+DIR_PATH=""
+INIT_BRANCH=""
+SPLIT_BRANCH=""
+KEEP_SPLIT=""
+RM=""
+DRY_RUN=""
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="git"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="repo"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -r|--repo) DST_PATH="${2}" ; shift ; shift ;;
+    -b|--branch) INIT_BRANCH="${2}" ; shift ; shift ;;
+    --split-branch) SPLIT_BRANCH="${2}" ; shift ; shift ;;
+    --rm) RM="true" ; shift ;;
+    --keep-split) KEEP_SPLIT="true" ; shift ;;
+    --dry-run) DRY_RUN="true" ; shift ;;
+    -v|--verbose) export ULOGGER_VERBOSE="true" ; shift ;;
+    -h|--help) help ; exit 0 ;;
+    -*) usage ; exit 1 ;;
+    *) DIR_PATH="${1}" ; shift ;;
+  esac
+done
+
+
+# validate that this is being called from a repo
+! git rev-parse --is-inside-work-tree > /dev/null && exit 1
+
+THIS_PATH="$(git rev-parse --show-toplevel)"
+THIS_REPO="$(basename "${THIS_PATH}")"
+
+if [[ -z "${DIR_PATH}" ]]; then
+    ulogger error "directory is required"
+    exit 1
+fi
+
+DIR_PATH="$(realpath "${DIR_PATH}")"
+DIR_NAME="$(basename "${DIR_PATH}")"
+SUB_DIR="${DIR_PATH##"${THIS_PATH}/"}"
+
+if [[ ! -d "${DIR_PATH}" ]] || [[ "${SUB_DIR}" == "${DIR_PATH}" ]]; then
+    ulogger error "directory must be a valid sub-directory of this repo"
+    exit 1
+fi
+
+[[ -n "${TRUNK+x}" ]] && [[ -z "${INIT_BRANCH}" ]] && INIT_BRANCH="${TRUNK}"
+[[ -z "${SPLIT_BRANCH}" ]] && SPLIT_BRANCH="split-${DIR_NAME}-from-${THIS_REPO}"
+[[ -z "${DST_PATH}" ]] && DST_PATH="$(dirname "${THIS_PATH}")/${DIR_NAME}-${THIS_REPO}"
+DST_PATH="${THIS_PATH}/${DST_PATH}"
+DST_REPO="$(basename "${DST_PATH}")"
+
+if git show-ref --quiet refs/heads/"${SPLIT_BRANCH}"; then
+    ulogger info "${SPLIT_BRANCH} branch already exists in ${THIS_REPO}"
+    exit 1
+fi
+
+if [[ -d "${DST_PATH}" ]]; then
+    ulogger info "dir ${DST_PATH} already exists"
+    exit 1
+fi
+
+ulogger info "moving to root of ${THIS_REPO}"
+[[ -z "${DRY_RUN}" ]] && cd "$(git rev-parse --show-toplevel)"
+
+ulogger info "splitting ${SUB_DIR} sub-directory to ${SPLIT_BRANCH} branch"
+[[ -z "${DRY_RUN}" ]] && git subtree split -P "${SUB_DIR}" -b "${SPLIT_BRANCH}"
+
+ulogger info "creating dir for new repo at ${DST_PATH}"
+[[ -z "${DRY_RUN}" ]] && mkdir "${DST_PATH}" && cd "${DST_PATH}"
+
+if [[ -z "${INIT_BRANCH}" ]]; then
+    ulogger info "initializing new repo \"${DST_REPO}\""
+    [[ -z "${DRY_RUN}" ]] && git init
+else
+    ulogger info "initializing new repo \"${DST_REPO}\" w/ initial branch ${INIT_BRANCH}"
+    [[ -z "${DRY_RUN}" ]] && git init --initial-branch="${INIT_BRANCH}"
+fi
+
+ulogger info "pulling ${SPLIT_BRANCH} branch from ${THIS_REPO} repo"
+[[ -z "${DRY_RUN}" ]] && git pull "${THIS_PATH}" "${SPLIT_BRANCH}"
+
+if [[ -n "${RM}" ]]; then
+    ulogger info "removing ${SUB_DIR} from ${THIS_REPO} repo"
+    [[ -z "${DRY_RUN}" ]] && rm -rf "${SUB_DIR}"
+fi
+
+if [[ -z "${KEEP_SPLIT}" ]]; then
+    ulogger info "removing ${SPLIT_BRANCH} branch from ${THIS_REPO}"
+    [[ -z "${DRY_RUN}" ]] && cd "${THIS_PATH}" && git branch -D "${SPLIT_BRANCH}"
+fi
+
+exit 0
+

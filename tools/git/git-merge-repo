@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+
+usage() {
+    echo "usage: git merge-repo [<options>] <repository>"
+}
+
+help() {
+cat <<help
+GIT-MERGE-REPO(1)
+
+NAME
+
+    git merge-repo - Merge an existing repo into the current repo.
+
+SYNOPSIS
+
+    git merge-repo [-r|--repo <new-repo-name>] [-b|--branch <merge-branch>]
+                [--keep-remote] [--dry-run] [-v|--verbose] <repository>
+
+DESCRIPTION
+
+    Merges the repository at the provided path into the current repository.
+
+OPTIONS
+
+    -r, --repo          optional, defaults to the basename of repository; the name to use to add repo's remote to the destination repo
+    -b, --branch        optional, defaults to "master", or the "TRUNK" env var, if set; the branch to merge
+    --keep-remote       optional; if present, don't remove the source repo's remote from the destination repo
+    --dry-run           optional; if present, no state changes are made
+    -v, --verbose       optional; if present, the script will print to stdout messages about the script's progress
+    -h, --help          optional; display this message
+help
+}
+
+
+SRC_REPO=""
+SRC_PATH=""
+DST_REPO=""
+DST_PATH=""
+BRANCH="$([[ -n "${TRUNK+x}" ]] && echo "${TRUNK}" || echo "master")"
+KEEP_REMOTE=""
+DRY_RUN=""
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="git"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="repo"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -r|--repo) SRC_REPO="${2}" ; shift ; shift ;;
+    -b|--branch) BRANCH="${2}" ; shift ; shift ;;
+    --keep-remote) KEEP_REMOTE="true" ; shift ;;
+    --dry-run) DRY_RUN="true" ; shift ;;
+    -v|--verbose) export ULOGGER_VERBOSE="true" ; shift ;;
+    -h|--help) help ; exit 0 ;;
+    -*) usage ; exit 1 ;;
+    *) SRC_PATH="${1}" ; shift ;;
+  esac
+done
+
+
+# validate that this is being called from a repo
+! git rev-parse --is-inside-work-tree > /dev/null && exit 1
+
+if [[ ! -d "${SRC_PATH}" ]]; then
+    ulogger error "repository is required"
+    exit 1
+fi
+
+if [[ -z "${BRANCH}" ]]; then
+    ulogger error "-b|--branch is a required param"
+    exit 1
+fi
+
+SRC_PATH="$(realpath "${SRC_PATH}")"
+[[ -z "${SRC_REPO}" ]] && SRC_REPO="$(basename "${SRC_PATH}")"
+DST_PATH="$(git rev-parse --show-toplevel)"
+DST_REPO="$(basename "${DST_PATH}")"
+
+ulogger info "merging \"${SRC_REPO}\" repo into \"${DST_REPO}\" repo via \"${BRANCH}\" branch"
+ulogger debug "merging repo at path=${SRC_PATH} into repo at path=${DST_PATH}"
+
+ulogger info "moving to root of ${DST_REPO}"
+[[ -z "${DRY_RUN}" ]] && cd "$(git rev-parse --show-toplevel)"
+
+ulogger info "adding remote to ${DST_REPO} as \"${SRC_REPO}\""
+[[ -z "${DRY_RUN}" ]] && git remote add "${SRC_REPO}" "${SRC_PATH}"
+
+ulogger info "fetching ${SRC_REPO}"
+[[ -z "${DRY_RUN}" ]] && git fetch "${SRC_REPO}" --tags
+
+ulogger info "merging ${SRC_REPO} into ${DST_REPO}"
+[[ -z "${DRY_RUN}" ]] && git merge --allow-unrelated-histories "${SRC_REPO}"/"${BRANCH}"
+
+if [[ -z "${KEEP_REMOTE}" ]]; then
+    ulogger info "removing ${SRC_REPO} remote from ${DST_REPO}"
+    [[ -z "${DRY_RUN}" ]] && git remote remove "${SRC_REPO}"
+fi
+
+exit 0
+
