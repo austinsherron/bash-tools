@@ -26,13 +26,12 @@ function __deploy_deployer() {
 }
 
 function __deploy_common() {
+    deploy -p "${TOOLS_ROOT}/git"
     deploy -p "${TOOLS_ROOT}/package/manage"
     deploy -p "${TOOLS_ROOT}/system/config"
     deploy -p "${TOOLS_ROOT}/system/snapshot"
     deploy -p "${TOOLS_ROOT}/utils/data"
     deploy -p "${TOOLS_ROOT}/utils/shell"
-    # TODO: wip
-    # deploy -p "${TOOLS_ROOT}/utils/secrets"
     deploy -p "${TOOLS_ROOT}/utils/shell"
     deploy -p "${TOOLS_ROOT}/utils/web"
 }
