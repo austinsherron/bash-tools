@@ -8,9 +8,6 @@ TOOLS_ROOT="$(dirname "${INSTALL_DIR}")"
 CODE_ROOT="$(dirname "$(dirname "${INSTALL_DIR}")")"
 ULOG_ROOT="${TOOLS_ROOT}/log"
 
-# shellcheck source-path=SCRIPTDIR/../log/internal/log.sh
-source "${ULOG_ROOT}/internal/log.sh"
-
 export INSTALL_DIR
 export TOOLS_ROOT
 export CODE_ROOT

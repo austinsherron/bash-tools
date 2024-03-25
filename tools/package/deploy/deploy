@@ -2,9 +2,6 @@
 
 set -Eeuo pipefail
 
-[[ -s "/etc/profile.d/shared_paths.sh" ]] && source /etc/profile.d/shared_paths.sh
-[[ -n "${ULOG_ROOT+x}" ]] && source "${ULOG_ROOT}/internal/log.sh"
-
 
 USAGE="deploy package {package} [-s] [-t] [-r] [-u] [--self][-d] [-v 0..5]"
 
@@ -118,24 +115,24 @@ done
 
 
 if [[ -z "${TGT}" ]] && [[ -z "${LOCAL_BIN+x}" ]]; then
-    log::warn "-t|--target not provided and LOCAL_BIN not set; falling back to stow default"
+    ulogger warn "-t|--target not provided and LOCAL_BIN not set; falling back to stow default"
 elif [[ -z "${TGT}" ]]; then
     TGT="${LOCAL_BIN}"
 fi
 
 if [[ "${#PKGS[@]}" -lt 1 ]]; then
-    log::error "at least one package is required"
+    ulogger error "at least one package is required"
     exit 1
 fi
 
 PKGS_STR="$(echo "${PKGS[@]}" | tr " " ", ")"
-log::info "deploying from dir=${SRC_DIR:-.}: ${PKGS_STR}"
+ulogger info "deploying from dir=${SRC_DIR:-.}: ${PKGS_STR}"
 
-STOW_PKGS=()
-
+# STOW_PKGS=()
+#
 # for PKG in "${PKGS[@]}"; do
 #     if [[ -s "${SRC_DIR}/${PKG}/install.sh" ]]; then
-#         log::info "running intall script detected at ${SRC_DIR}/${PKG}"
+#         ulogger info "running intall script detected at ${SRC_DIR}/${PKG}"
 #     else
 #     fi
 # done
