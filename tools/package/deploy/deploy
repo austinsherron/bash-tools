@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+source "${TOOLS_ROOT}/log/internal/log.sh"
+
 
 USAGE="deploy package {package} [-s] [-t] [-r] [-u] [--self][-d] [-v 0..5]"
 
@@ -115,18 +117,18 @@ done
 
 
 if [[ -z "${TGT}" ]] && [[ -z "${LOCAL_BIN+x}" ]]; then
-    ulogger warn "-t|--target not provided and LOCAL_BIN not set; falling back to stow default"
+    log::warn "-t|--target not provided and LOCAL_BIN not set; falling back to stow default"
 elif [[ -z "${TGT}" ]]; then
     TGT="${LOCAL_BIN}"
 fi
 
 if [[ "${#PKGS[@]}" -lt 1 ]]; then
-    ulogger error "at least one package is required"
+    log::error "at least one package is required"
     exit 1
 fi
 
 PKGS_STR="$(echo "${PKGS[@]}" | tr " " ", ")"
-ulogger info "deploying from dir=${SRC_DIR:-.}: ${PKGS_STR}"
+log::info "deploying from dir=${SRC_DIR:-.}: ${PKGS_STR}"
 
 # STOW_PKGS=()
 #

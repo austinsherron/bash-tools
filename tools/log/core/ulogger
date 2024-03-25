@@ -2,6 +2,9 @@
 
 set -Eeuo pipefail
 
+source "${BASH_TOOLS}/lib/args/check.sh"
+source "${BASH_TOOLS}/lib/args/parse.sh"
+
 
 declare -A CMDS=(
     # TODO: impl
@@ -73,10 +76,13 @@ function __handle_view() { log-explore -v "$@" ; }
 function __handle_explore() { log-explore -e "root" ; }
 
 FIRST="${1:-x}"
-[[ "${FIRST}" == "-h" || ${FIRST} == "--help" ]] && help && exit 0
 
-if [[ -n "${CMD_ACTIONS[${FIRST}]+x}" ]]; then
-    CMD="${1}"; shift
+if is_help_flag "${FIRST}"; then
+    help && exit 0
+fi
+
+if is_one_of "${FIRST}" "${CMD_ACTIONS[@]}"; then
+    CMD="${FIRST}" ; shift
 fi
 
 "${CMD_ACTIONS[${CMD}]}" "$@"

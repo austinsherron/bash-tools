@@ -42,8 +42,12 @@ function __deploy_log_file_if_necessary() {
     local file="${1}"
     local -r target="${DST}/$(basename "${file}")"
 
-    [[ -s "${target}" ]] && echo "[INFO] ${target} already exists" && return 0
+    if [[ ! -e "${target}" ]]; then
+        echo "[INFO] unlinking broken symlink at ${target}"
+        sudo unlink "${target}"
+    fi
 
+    [[ -s "${target}" ]] && echo "[INFO] ${target} already exists" && return 0
     echo "[INFO] linking $(basename "${file}") to ${DST}"
     sudo ln -s "${file}" "${DST}" || exit 1
 }
