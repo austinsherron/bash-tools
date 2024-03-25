@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 source /etc/profile.d/shared_paths.sh
-source "${CODE_ROOT}/lib/bash/args/check.sh"
+source "${BASH_TOOLS}/lib/args/check.sh"
 
 
 #######################################
