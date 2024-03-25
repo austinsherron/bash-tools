@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source /etc/profile.d/shared_paths.sh
+source "${BASH_TOOLS}/lib/utils.sh"
+
+
+OS="$(os-type)"
+MGR="${OS}-pkgmgr"
+
+if ! which "${MGR}" &> /dev/null; then
+    ulogger error "no known package manager for os=${OS} (pkgmgr=${MGR})"
+    exit 1
+fi
+
+# shellcheck disable=SC2068
+"${MGR}" $@
+

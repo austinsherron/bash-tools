@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source /etc/profile.d/shared_paths.sh
+source "${BASH_TOOLS}/lib/utils.sh"
+
+
+USAGE="pkgmgr [cmd] -p pkg [-m mgr] [-a] [-f] [-s script {--script-arg [arg]}]"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Central entry point for basic interactions w/ packages via apt, flatpak, and snap package managers. Available commands include:
+
+        * check - checks if -p|--pkg is installed
+        * search - searches all apt, flatpak, and snap for -p|--pkg
+        * install - maps to install in all three package managers
+        * update - maps to: apt "upgrade", flatpak "upgrade", snap "refresh"
+        * remove - maps to: apt "remove", flatpak "uninstall", snap "remove"
+
+    Packages are installed only if they aren't already, unless -f|--force is provided. Similarly, packages are only updated/removed if they already exist in the system.
+
+    Can also be used to run installation scripts in "\${SCRIPTS_ROOT}/install/linux|generic".
+
+    Note: intended for use w/ linux based systems.
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    CMD                 optional, defaults to "install"; must be one of "check", "search", "install", "remove", or "update"; the cmd to run
+
+OPTIONS
+
+    -p, --pkg           optional if -s|--script is used; the name of the package on which to perform an action; arguments/flags to package managers can be provided by providng quoted, multi-token strings
+    -m, --mgr           must be one of "apt", "flatpak", or "snap"; the package manager to use; can also be be used w/ "script", where -p|--pkg is the name of a script in
+                        "\${SCRIPTS_ROOT}/install/[os]|generic" to run; at the time of writing, scripts work only w/ CMD = install
+    -a, --ask           optional; if provided, package managers will ask for confirmation (where supported, i.e.: snap doesn't support this feature)
+    -f, --force         optional; if provided, install command will be executed even if package is already installed
+    -d, --dry-run       optional; if present, no state changes are made
+    -v, --verbose       optional; if present, print to stdout messages about the script's progress
+    -h, --help          display this message
+help
+}
+
+declare -A CMDS=([check]=1 [search]=1 [install]=1 [update]=1 [remove]=1)
+declare -A APT=([install]="install" [remove]="remove" [update]="upgrade")
+declare -A FP=([install]="install" [remove]="uninstall" [update]="upgrade")
+declare -A SNAP=([install]="install" [remove]="remove" [update]="refresh")
+declare -A SCRIPT=([install]="install")
+
+PKG=""
+MGR=""
+CMD="install"
+CONFIRM="-y"
+ARGS=()
+FORCE=""
+DRY_RUN=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -p|--pkg)
+      PKG="${2}"
+      shift
+      shift
+      ;;
+    -m|--mgr)
+      MGR="${2}"
+      shift
+      shift
+      ;;
+    -a|--ask)
+      CONFIRM=""
+      shift
+      ;;
+    -f|--force)
+      FORCE="true"
+      shift
+      ;;
+    -d|--dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    -v|--verbose)
+      export ULOGGER_VERBOSE="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+     *)
+      CMD="${1}"
+      shift
+      ;;
+  esac
+done
+
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="pkg"
+export ULOGGER_PREFIX="${CMD}"
+
+if [[ "$(os-type)" == "linux" ]]; then
+    ulogger error "linux-pkgmgr can only be used on linux systems"
+    exit 1
+fi
+
+__apt_cmd() {
+    local cmd="${APT[${CMD}]}"
+    local -r full_cmd="$(echo "sudo apt ${cmd} ${PKG} ${ARGS[*]}" | xargs)"
+
+    ulogger info "running '${full_cmd}'"
+    [[ -z "${DRY_RUN}" ]] && sudo apt update "${CONFIRM}" && $full_cmd
+}
+
+__flatpak_cmd() {
+    local cmd="${FP[${CMD}]}"
+    local -r full_cmd="$(echo "sudo flatpak ${cmd} ${PKG} ${ARGS[*]}" | xargs)"
+
+    [[ "${PKG}" == *"."* ]] && [[ "${cmd}" == "install" ]] && PKG="flathub ${PKG}"
+    ulogger info "running '${full_cmd}'"
+    [[ -z "${DRY_RUN}" ]] && $full_cmd
+}
+
+__snap_cmd() {
+    local cmd="${SNAP[${CMD}]}"
+    local -r full_cmd="$(echo "sudo snap ${cmd} ${PKG} ${ARGS[*]}" | xargs)"
+
+    ulogger info "running '${full_cmd}'"
+    [[ -z "${DRY_RUN}" ]] && $full_cmd
+}
+
+__run_script() {
+    [[ -z "${SCRIPT[${CMD}]+x}" ]] && ulogger error "cannot use cmd=${CMD} w/ mgr=script" && return 1
+
+    local script_path
+    script_path="${SCRIPTS_ROOT}/install/$(os-type)/${PKG}.sh"
+
+    if [[ ! -f "${script_path}" ]]; then
+        ulogger info "script=${script_path} doesn't exist; falling back to os-agnostic path"
+        script_path="${SCRIPTS_ROOT}/install/generic/${PKG}.sh"
+        [[ ! -f "${script_path}" ]] && ulogger error "os-agnostic script=${script_path} doesn't exist" && return 1
+    fi
+
+    local -r full_cmd="$(echo "${script_path} ${ARGS[*]}" | xargs)"
+    ulogger info "running '${full_cmd}'"
+    [[ -z "${DRY_RUN}" ]] && $full_cmd
+}
+
+if [[ -z "${PKG}" ]]; then
+    ulogger error "-p|--pkg is required"
+    exit 1
+fi
+
+if [[ -z "${MGR}" ]] && [[ "${CMD}" != "check" && "${CMD}" != "search" ]]; then
+    ulogger error "-m|--mgr is required"
+    exit 1
+fi
+
+if [[ -z "${CMDS[${CMD}]+x}" ]]; then
+    CMDS_STR="$(echo "${!CMDS[*]}" | tr ' ' '|')"
+    ulogger error "-c|--cmd must be one of ${CMDS_STR}"
+    exit 1
+fi
+
+if [[ "${CMD}" == "search" ]]; then
+    ulogger info "searching apt for ${PKG}" -s notify
+    apt search "${PKG}"
+
+    ulogger info "searching flatpak for ${PKG}" -s notify
+    flatpak search "${PKG}"
+
+    ulogger info "searching snap for ${PKG}" -s notify
+    snap search "${PKG}"
+
+    exit 0
+fi
+
+read -r -a PKG_ARR <<< "${PKG}"
+
+if [[ "${#PKG_ARR[@]}" -eq 0 ]]; then
+    ulogger info "-p|--pkg is required"
+    exit 1
+fi
+
+PKG="${PKG_ARR[0]}"
+ARGS+=("${PKG_ARR[@]:1}")
+[[ -n "${CONFIRM}" ]] && [[ "${MGR}" != "snap" ]] && ARGS+=("${CONFIRM}")
+
+[[ "${CMD}" == "check" ]] && [[ -n "${MGR}" ]] && CHECK_MGR="-m ${MGR}" || CHECK_MGR=""
+{ check-pkg -p "${PKG}" ${CHECK_MGR}; RC="$?"; } || true
+
+[[ "${CMD}" == "check" ]] && exit $RC
+
+# propagate unexpected error
+if [[ $RC -eq 2 ]]; then
+    exit 1
+elif [[ $RC -eq 0 ]] && [[ "${CMD}" == "install" ]]; then
+    ulogger info "${PKG} is already installed"
+    [[ -z "${FORCE}" ]] && exit 0
+    ulogger info "-f|--force option detected; forcing install"
+elif [[ $RC -eq 1 ]] && [[ "${CMD}" != "install" ]]; then
+    ulogger error "cannot ${CMD} package that isn't installed"
+    exit 1
+fi
+
+case "${MGR}" in
+    apt) __apt_cmd ;;
+    flatpak) __flatpak_cmd ;;
+    snap) __snap_cmd ;;
+    script) __run_script ;;
+    *)
+      ulogger error "-m|--mgr must be one of 'apt|flatpak|snap', not ${MGR}"
+      exit 1
+      ;;
+esac
+

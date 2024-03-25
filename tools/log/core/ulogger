@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_TOOLS}/lib/args/check.sh"
+source "${BASH_TOOLS}/lib/args/parse.sh"
+
+
+declare -A CMDS=(
+    # TODO: impl
+    # [healthcheck]="check and report on old, stale, and/or large log files"
+    # [run]="        run pluggable actions, i.e.: archive old, stale, and/or large log files"
+    [write]="      actually write log messages to files and stdout"
+    [level]="      validate and test log levels"
+    [config]="     read user and default logger configuration"
+    [configure]="  open user logger config in an editor"
+    [list]="       show known log files"
+    [view]="       view logs of a specific type"
+    [explore]="    open an editor in the root log directory"
+)
+
+declare -A CMD_ACTIONS=(
+    # core
+    [write]="__handle_write"
+    [level]="__handle_level"
+    # config
+    [config]="__handle_config"
+    [configure]="__handle_configure"
+    # inspection
+    [list]="__handle_list"
+    [view]="__handle_view"
+    [explore]="__handle_explore"
+)
+
+function __cmds() {
+    local sep="${1:-|}"
+    echo "${!CMDS[@]}" | tr " " "${sep}"
+}
+
+function __cmd_descriptions() {
+    for cmd in "${!CMDS[@]}"; do
+        echo "    ${cmd}       ${CMDS[${cmd}]}"
+    done
+}
+
+USAGE="ulogger [cmd] {flags}"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Consolidated entry point to ulogger related functionality.
+
+CMDS
+
+$(__cmd_descriptions)
+
+USAGE
+
+    ${USAGE}
+help
+}
+
+CMD="write"
+
+function __handle_config() { log-config "$@" ; }
+function __handle_configure() { log-config -e ; }
+function __handle_level() { log-level "$@" ; }
+function __handle_write() { log-write "$@" ; }
+function __handle_list() { log-explore -l "$@"; }
+function __handle_view() { log-explore -v "$@" ; }
+function __handle_explore() { log-explore -e "root" ; }
+
+FIRST="${1:-x}"
+
+if is_help_flag "${FIRST}"; then
+    help && exit 0
+fi
+
+if is_one_of "${FIRST}" "${CMD_ACTIONS[@]}"; then
+    CMD="${FIRST}" ; shift
+fi
+
+"${CMD_ACTIONS[${CMD}]}" "$@"
+

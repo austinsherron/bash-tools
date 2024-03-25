@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${TOOLS_ROOT}/log/internal/log.sh"
+
+
+USAGE="deploy package {package} [-s] [-t] [-r] [-u] [--self][-d] [-v 0..5]"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    A thin wrapper around stow for installing/removing internal and manually installed packages.
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    PACKAGE             >= 1 required if -p|--path not used, multi-valued; packages, relative to -s|--srouce, to deploy
+
+OPTIONS
+
+    -s, --source        optional, defaults to cwd; the dir from which to install
+    -t, --target        optional, defaults to the value of LOCAL_BIN or stow's default, depending on the availability of path related env variables; the dir to which
+                        to install
+    -p, --path          optional; specifies the package as a full path instead of -s [PACKAGE]
+    -u, --uninstall     optional; indicates that packages should be remove
+    -r, --reinstall     optional; indicates that packages should be remove
+    --self              optional; indicates that deploy should be deployed
+    -d, --dry-run       optional; simulate changes based on provided args but make no file system changes
+    -v, --verbose       optional, -v N, N=0..5, defaults to 0; logs progress/status msgs to stderr; higher N means more verbosity
+    -h, --help          optional; display this message
+help
+}
+
+
+PKGS=()
+SRC=""
+SRC_DIR=""
+TGT=""
+MODIFIER=""
+DRY_RUN=""
+VERBOSE=""
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="deploy"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX=""
+
+function __set_src() {
+  local path="${1}"
+  SRC="--dir=${path}"
+  SRC_DIR="${path}"
+}
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -s|--source)
+      __set_src "${2}"
+      shift
+      shift
+      ;;
+    -t|--target)
+      TGT="${2}"
+      shift
+      shift
+      ;;
+    -p|--path)
+      PKGS=("$(basename "${2}")")
+      __set_src "$(dirname "${2}")"
+      shift
+      shift
+      ;;
+    -u|--uninstall)
+      MODIFIER="--delete"
+      [[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="remove"
+      shift
+      ;;
+    -r|--reinstall)
+      MODIFIER="--restow"
+      shift
+      ;;
+    --self)
+      PKG="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 || true ; pwd -P)"
+      PKGS=("$(basename "${PKG}")")
+      __set_src "$(dirname "${PKG}")"
+      shift
+      ;;
+    -d|--dry-run)
+      DRY_RUN="--no"
+      shift
+      ;;
+    -v*)
+      VERBOSE="${1}"
+      export ULOGGER_VERBOSE="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    -*)
+      usage
+      exit 1
+      ;;
+    *)
+      PKGS+=("${1}")
+      shift
+      ;;
+  esac
+done
+
+
+if [[ -z "${TGT}" ]] && [[ -z "${LOCAL_BIN+x}" ]]; then
+    log::warn "-t|--target not provided and LOCAL_BIN not set; falling back to stow default"
+elif [[ -z "${TGT}" ]]; then
+    TGT="${LOCAL_BIN}"
+fi
+
+if [[ "${#PKGS[@]}" -lt 1 ]]; then
+    log::error "at least one package is required"
+    exit 1
+fi
+
+PKGS_STR="$(echo "${PKGS[@]}" | tr " " ", ")"
+log::info "deploying from dir=${SRC_DIR:-.}: ${PKGS_STR}"
+
+# STOW_PKGS=()
+#
+# for PKG in "${PKGS[@]}"; do
+#     if [[ -s "${SRC_DIR}/${PKG}/install.sh" ]]; then
+#         ulogger info "running intall script detected at ${SRC_DIR}/${PKG}"
+#     else
+#     fi
+# done
+
+# shellcheck disable=SC2086
+sudo stow "${SRC}" --target="${TGT}" ${MODIFIER} $DRY_RUN $VERBOSE "${PKGS[@]}"
+
