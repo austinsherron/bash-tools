@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+
+USAGE="tmux-add-layout -l layout [-t window] [-s path]"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Adds a layout entry to the resize-layout(s) config file.
+
+    The default location for window layout specifications is "${HOME}/.config/tmux/layouts", or a path can be passed via -s|--specs.
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -l, --layout        the layout's identifier; the combination of identifier, window dimensions, and pane count should uniquely identify a layout
+    -t, --target        optional, defaults to the active window; the name of the window for which to add a layout
+    -s, --specs         optional, default to "\${HOME}/.config/tmux/layouts"; must be file path or "stdout"; the file to which to write the new layout
+                        specifications; using "-s|--specs stdout" will write the layout to stdout
+    --force             optional; if specified, forces resize even if pane dimensions match those in the layout spec
+    -v, --verbose       optional; write progress/status messages to stdout
+    --dry-run           optional; indicates that the script should print hypothetical results to the console, but make no state changes
+    -h, --help          display this message
+help
+}
+
+
+LAYOUT_ID=""
+TARGET="$(tmux display-message -p "#W")"
+SPEC_PATH="${HOME}/.config/tmux/layouts"
+FORCE=""
+DRY_RUN=""
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="tmux"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="add"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -l|--layout)
+      LAYOUT_ID="$([[ -z "${2+x}" ]] && echo "" || echo "${2}")"
+      shift
+      shift
+      ;;
+    -t|--target)
+      TARGET="$([[ -z "${2+x}" ]] && echo "${TARGET}" || echo "${2}")"
+      shift
+      shift
+      ;;
+    -s|--specs)
+      SPEC_PATH="$([[ -z "${2+x}" ]] && echo "${SPEC_PATH}" || echo "${2}")"
+      shift
+      shift
+      ;;
+    -v|--verbose)
+      export ULOGGER_VERBOSE="true"
+      shift
+      ;;
+    --force)
+      FORCE="true"
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN="true"
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *)
+      echo "${1}"
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+
+if [[ -z "${LAYOUT_ID}" ]]; then
+    ulogger error "-l|--layout is required"
+    exit 1
+fi
+
+# validate target refers to a window
+if [[ -z "$(tmux list-windows -F "#W" | grep "${TARGET}" || true)" ]]; then
+    ulogger error "tmux window target='${TARGET}' does not exist"
+fi
+
+if [[ "${SPEC_PATH}" != "stdout" ]] && [[ ! -f "${SPEC_PATH}" ]]; then
+    ulogger error "-s|--specs must refer to a valid file (${SPEC_PATH (${SPEC_PATH})})"
+elif [[ -f "${SPEC_PATH}" ]]; then
+    SPEC_PATH="$(realpath "${SPEC_PATH}")"
+fi
+
+# get window id
+TARGET_ID="$(tmux list-windows -F "#I #W" | grep "${TARGET}"| cut -d ' ' -f1)"
+ulogger info "preparing to add layout for target window='${TARGET}' (id: ${TARGET_ID})"
+
+PANES="$(tmux list-panes -t "${TARGET_ID}" -F "#{pane_width}x#{pane_height}")"
+DIMENSIONS="$(tmux display-message -t "${TARGET_ID}" -p "#{window_width}x#{window_height}")"
+PANE_COUNT="$(echo "${PANES}" | wc -l | xargs)"
+LAYOUT="$(tmux display-message -t "${TARGET_ID}" -p "#{window_layout}")"
+PANE_DIMENSIONS="$(echo "${PANES}" | tr '\n' ',')"
+PANE_DIMENSIONS="${PANE_DIMENSIONS:0:-1}"
+
+IDENTIFIER="${LAYOUT_ID} ${DIMENSIONS} ${PANE_COUNT}"
+LAYOUT_SPEC="${IDENTIFIER} ${LAYOUT} ${PANE_DIMENSIONS}"
+
+if [[ "${SPEC_PATH}" == "stdout" ]]; then
+    logger info "writing layout to sdtout"
+    echo "${LAYOUT_SPEC}"
+    exit
+fi
+
+logger info "constructed layout spec='${LAYOUT_SPEC}'"
+SPEC_MATCH="$(grep -v "^#" "${SPEC_PATH}" | grep "^${IDENTIFIER}" || true)"
+
+if [[ -n "${SPEC_MATCH}" ]] && [[ "${FORCE}" != "true" ]]; then
+    ulogger error "layout already exists for identifier='${IDENTIFIER}'; exiting"
+fi
+
+CMD=""
+
+if [[ -n "${SPEC_MATCH}" ]]; then
+    CMD="sed -i.bak 's/^${IDENTIFIER}.*$/${LAYOUT_SPEC}/' ${SPEC_PATH}"
+else
+    # NOTE: reconstructing this w/ single quotes around layout to escape special chars
+    CMD="echo ${IDENTIFIER} '${LAYOUT}' ${PANE_DIMENSIONS} >> ${SPEC_PATH}"
+fi
+
+if [[ "${DRY_RUN}" == "true" ]]; then
+    echo "${CMD}"
+    exit
+fi
+
+eval "${CMD}"
+

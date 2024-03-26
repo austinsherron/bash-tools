@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_TOOLS}/lib/args/validate.sh"
+
+
+USAGE="tmux-popup [[--width w] [--height h]]|[--dim [ww]x[hh]] [--dir path]"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Creates a tmux popup window that runs the provided command.
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    CMD             multi-valued; the command(s) to run in the popup
+
+OPTIONS
+
+    --width         optional, defaults to 70; the popup width, as a percentage
+    --height        optional, defaults to 90; the popup width, as a percentage
+    --dim           optional; alternate mechanism for specifying width/height; format="hhxww", i.e.: "50x50"
+    --dir           optional, defaults to cwd; the popup's directory
+    -h, --help      display this message
+help
+}
+
+
+W="70"
+H="90"
+DIM=""
+DIR="$(pwd)"
+CMD=()
+EXIT=""
+
+while [[ $# -gt 0 ]]; do
+  case "${1}" in
+    --width) W="${2}" ; shift ; shift ;;
+    --height) H="${2}" ; shift ; shift ;;
+    --dim) DIM="${2}" ; shift ; shift ;;
+    --dir) DIR="${2}" ; shift ; shift ;;
+    --exit) EXIT="-E" ; shift ;;
+    *) CMD+=("${1}") ; shift ;;
+  esac
+done
+
+
+if [[ -n "${DIM}" ]] && [[ "${DIM}" =~ ([0-9]{1,3})x([0-9]{1,3})$ ]]; then
+    W="${BASH_REMATCH[1]}"
+    H="${BASH_REMATCH[2]}"
+elif [[ -n "${DIM}" ]]; then
+    ulogger error "--dim (${DIR}) must by in the format \"{dd}x{dd}\""
+    exit 1
+fi
+
+validate_required_array "cmd" "${CMD[@]}" || exit 1
+validate_range "--width" "${W}" ">0" "<=100"
+validate_range "--height" "${H}" ">0" "<=100"
+validate_dir "${DIR}" "--dir"
+
+ulogger info "launching popup w/ dim=${W}%x${H}% in dir=${DIR} w/ cmd=${CMD[*]}, flags=${EXIT}" -t tmux -p popup
+tmux popup -w "${W}%" -h "${H}%" "${@}" -d "${DIR}" $EXIT "${CMD[@]}"
+

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+
+## loads tmux env variables
+
+# tmux.conf sets bar at top to start
+tmux setenv TMUX_STATUS_POS "top"
+
+# layout config
+tmux setenv TMUX_LAYOUT_DASH "disable"
+
