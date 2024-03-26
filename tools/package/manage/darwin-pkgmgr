@@ -19,6 +19,7 @@ DESCRIPTION
     Central entry point for basic interactions w/ packages for a darwin system via brew. Available commands include:
 
         * check - checks if -p|--pkg is installed
+        * info - displays information about -p|--pkg
         * search - searches for -p|--pkg
         * install - installs -p|--pkg
         * update - maps to "upgrade"
@@ -53,7 +54,17 @@ OPTIONS
 help
 }
 
-declare -A CMDS=([check]="check" [search]="search" [install]="install" [update]="upgrade" [remove]="remove")
+declare -A CMDS=(
+    [check]="check"
+    [info]="info"
+    [install]="install"
+    [update]="upgrade"
+    [remove]="remove"
+    [search]="search"
+)
+
+declare -A INSTALLED_CMDS=([update]="upgrade" [remove]="remove")
+
 
 PKG=""
 CASK=""
@@ -203,8 +214,8 @@ if [[ ${INSTALLED} -eq 0 ]] && [[ "${CMD}" == "install" ]]; then
     ulogger info "${PKG} is already installed"
     [[ -z "${FORCE}" ]] && exit 0
     ulogger info "-f|--force option detected; forcing install"
-elif [[ ${INSTALLED} -eq 1 ]] && [[ "${CMD}" != "install" ]]; then
-    ulogger error "cannot ${CMD} package that isn't installed"
+elif [[ ${INSTALLED} -eq 1 ]] && [[ -n "${INSTALLED_CMDS["${CMD}"]+x}" ]]; then
+    ulogger error "${CMD} cmd not valid for package that isn't installed"
     exit 1
 fi
 
