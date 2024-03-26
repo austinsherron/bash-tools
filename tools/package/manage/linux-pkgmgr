@@ -19,6 +19,7 @@ DESCRIPTION
     Central entry point for basic interactions w/ packages via apt, flatpak, and snap package managers. Available commands include:
 
         * check - checks if -p|--pkg is installed
+        * info - displays information about -p|--pkg; maps to: apt "show", and flatpak and snap "info"
         * search - searches all apt, flatpak, and snap for -p|--pkg
         * install - maps to install in all three package managers
         * update - maps to: apt "upgrade", flatpak "upgrade", snap "refresh"
@@ -51,10 +52,18 @@ OPTIONS
 help
 }
 
-declare -A CMDS=([check]=1 [search]=1 [install]=1 [update]=1 [remove]=1)
-declare -A APT=([install]="install" [remove]="remove" [update]="upgrade")
-declare -A FP=([install]="install" [remove]="uninstall" [update]="upgrade")
-declare -A SNAP=([install]="install" [remove]="remove" [update]="refresh")
+declare -A CMDS=(
+    [check]=1
+    [info]=1
+    [install]=1
+    [update]=1
+    [remove]=1
+    [search]=1
+)
+
+declare -A APT=([info]="show" [install]="install" [remove]="remove" [update]="upgrade")
+declare -A FP=([info]="info" [install]="install" [remove]="uninstall" [update]="upgrade")
+declare -A SNAP=([info]="info" [install]="install" [remove]="remove" [update]="refresh")
 declare -A SCRIPT=([install]="install")
 
 PKG=""
