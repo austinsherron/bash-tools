@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+
+USAGE="tmux-resize-layouts {-t window} {options}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Calls resize-layout on multiple tmux windows. This script accepts all resize-layout args and can accept multiple -t|--target args.
+
+    Note: this script is intended to run as a tmux hook on the "client-resized" event.
+
+USAGE
+
+    ${USAGE}
+
+ADDITIONAL OPTIONS
+
+    -t, --target        optional, multi-valued, defaults to all windows; the names of the windows for which to set a layout
+    -h, --help          display this message
+help
+}
+
+
+TARGETS=()
+CMD="resize-layout"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -t|--target)
+      TARGETS+=("${2}")
+      shift
+      shift
+      ;;
+    -h|--help)
+      help
+      exit 0
+      ;;
+    *)
+      CMD="${CMD} ${1}"
+      shift
+      ;;
+  esac
+done
+
+
+if [[ "${#TARGETS[@]}" -eq 0 ]]; then
+    mapfile -t TARGETS < <(tmux list-window -F '#W')
+fi
+
+for target in "${TARGETS[@]}"; do
+    eval "${CMD} -t \"${target}\""
+done
+

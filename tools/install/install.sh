@@ -30,6 +30,7 @@ function __deploy_common() {
     deploy -p "${TOOLS_ROOT}/package/manage"
     deploy -p "${TOOLS_ROOT}/system/config"
     deploy -p "${TOOLS_ROOT}/system/snapshot"
+    deploy -p "${TOOLS_ROOT}/tmux"
     deploy -p "${TOOLS_ROOT}/utils/data"
     deploy -p "${TOOLS_ROOT}/utils/shell"
     deploy -p "${TOOLS_ROOT}/utils/shell"
