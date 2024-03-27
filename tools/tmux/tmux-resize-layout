@@ -113,7 +113,6 @@ __extract_layout_from_env() {
     echo "${env_val}" | cut -d "=" -f2
 }
 
-log-env vol "$@"
 eval "$(log-env vol "$@")"
 
 while [[ $# -gt 0 ]]; do
@@ -254,5 +253,5 @@ if [[ "${DRY_RUN}" == "true" ]]; then
 fi
 
 # the lack of quotes around ${LAYOUT_SPEC} is intentional
-tmux select-layout -t "${TARGET}" ${LAYOUT_SPEC}
+tmux select-layout -t "${TARGET}" "${LAYOUT_SPEC}"
 
