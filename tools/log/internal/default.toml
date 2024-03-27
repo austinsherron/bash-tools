@@ -1,6 +1,10 @@
 root = "${HOME}/.local/state/logs"
 type = "default"
 
+[pager]
+list = "ls"
+tree = "ls -R"
+
 [level]
 current = "WARN"
 default = "WARN"

@@ -32,7 +32,7 @@ DESCRIPTION
         * layout-specification: a window specification recognized by "tmux select-layout"; see "man tmux" for details
         * pane-dimensions: a comma separated list of dimensions of panes in the layout, i.e.: 319x88,79x88
 
-    The default location for window layout specifications is "${HOME}/.config/tmux/layouts", or they can be passed via -s.
+    The default location for window layout specifications is "\${HOME}/.config/tmux/layouts", or they can be passed via -s.
 
     This script can be run in either default or "strict" mode. In default mode, all errors are silently ignored, resulting no action. Strict mode introduces the following
     error cases, which, when triggered, result in non-zero return codes:
@@ -52,7 +52,7 @@ OPTIONS
 
     -l, --layout        optional; if not provided, will pull value from window name if in the format  ".* \(layout-type\)"; the layout to use
     -t, --target        optional, defaults to the active window; the name of the window for which to set a layout
-    -s, --specs         optional, default to "${HOME}/.config/tmux/layouts"; a file that contains layout specifications in the format describe about
+    -s, --specs         optional, default to "\${HOME}/.config/tmux/layouts"; a file that contains layout specifications in the format describe about
     --strict            optional; can't be used w/ --dry-run; if specified, error cases will case the script to exit with non-zero return codes; see above for specific
                         behavioral description
     --force             optional; if specified, forces resize even if pane dimensions match those in the layout spec
@@ -77,14 +77,26 @@ log() {
     ulogger info "${1}" || echo -n ""
 }
 
-log_and_exit() {
-    if [[ "${STRICT}" == "true" ]]; then
-        ulogger error "${1}"
-        exit 1
-    fi
+__log_and_exit() {
+    local msg="${1}"; shift
 
-    ulogger warn "${1}"
-    exit 0
+    if [[ "${STRICT}" == "true" ]]; then
+        ulogger error "${msg}; exiting" "$@"
+        exit 1
+    else
+        ulogger warn "${msg}; exiting" "$@"
+        exit 0
+    fi
+}
+
+__log_or_exit() {
+    local msg="${1}" ; shift
+
+    if [[ -n "${STRICT}" ]]; then
+        __log_and_exit "${msg}" "$@"
+    else
+        ulogger warn "${msg}" "$@"
+    fi
 }
 
 __extract_layout_from_name() {
@@ -101,6 +113,7 @@ __extract_layout_from_env() {
     echo "${env_val}" | cut -d "=" -f2
 }
 
+eval "$(log-env vol "$@")"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -119,16 +132,8 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
-    --verbose)
-      export ULOGGER_VERBOSE="true"
-      shift
-      ;;
     --strict)
       STRICT="true"
-      shift
-      ;;
-    --force)
-      FORCE="true"
       shift
       ;;
     --dry-run)
@@ -139,6 +144,7 @@ while [[ $# -gt 0 ]]; do
       help
       exit 0
       ;;
+    -v*|-q*) shift ;;
     *)
       usage
       exit 1
@@ -154,7 +160,7 @@ fi
 
 # validate target refers to a window
 if [[ -z "$(tmux list-windows -F "#W" | grep "${TARGET}" || true)" ]]; then
-    log_and_exit "tmux window target='${TARGET}' does not exist"
+    __log_and_exit "tmux window target='${TARGET}' does not exist"
 fi
 
 # get window id
@@ -168,25 +174,25 @@ if [[ "${MATCHING_TARGETS}" != "${TARGET_ID}" ]]; then
     TARGET_IDS="${TARGET_IDS:0:-1}"
     MSG="multiple windows found for target='${TARGET}' (ids: ${TARGET_IDS})"
     # exit only if using strict mode (that's why we're not just using log_and_exit here)
-    [[ "${STRICT}" == "true" ]] && log_and_exit "${MSG}" || log "${MSG}"
+    __log_or_exit "${MSG}"
 fi
 
-log "preparing to set layout for target window='${TARGET}' (id: ${TARGET_ID})"
+ulogger info "preparing to set layout for target window='${TARGET}' (id: ${TARGET_ID})"
 
 # if layout-type isn't provided, try to extract it from window name
 [[ -z "${LAYOUT}" ]] && LAYOUT="$(__extract_layout_from_name)"
 
 if [[ -n "${LAYOUT}" ]]; then
-    log "no layout provided; extracted layout='${LAYOUT}' from window name='${TARGET}'"
+    ulogger info "no layout provided; extracted layout='${LAYOUT}' from window name='${TARGET}'"
 else
     LAYOUT="$(__extract_layout_from_env)"
-    [[ -n "${LAYOUT}" ]] && log "no layout provided; extracted layout='${LAYOUT}' from tmux env"
+    [[ -n "${LAYOUT}" ]] && ulogger info "no layout provided; extracted layout='${LAYOUT}' from tmux env"
 fi
 
-[[ -z "${LAYOUT}" ]] && log "no layout provided; unable to extract layout"
+[[ -z "${LAYOUT}" ]] && ulogger info "no layout provided; unable to extract layout"
 
 if [[ ! -f "${SPEC_PATH}" ]]; then
-    log_and_exit "spec file='${SPEC_PATH}' does not exist"
+    __log_and_exit "spec file='${SPEC_PATH}' does not exist"
 fi
 
 # build layout identifier from window dimensions, pane count, and, optionally, the identifier
@@ -196,55 +202,56 @@ PANE_COUNT="$(tmux list-panes -t "${TARGET_ID}"  | wc -l | xargs)"
 LAYOUT="$([[ -z ${LAYOUT} ]] && echo "" || echo "${LAYOUT} ")"
 IDENTIFIER="${LAYOUT}${DIMENSIONS} ${PANE_COUNT}"
 
-log "searching for layout specification with identifier='${IDENTIFIER}'"
+ulogger info "searching for layout specification with identifier='${IDENTIFIER}'"
 
 # filter out comments before grepping for identifier
-SPEC_MATCH="$(grep -v "^#" "${SPEC_PATH}" | grep "${IDENTIFIER}" || true)"
-if [[ -z "${SPEC_MATCH}" ]]; then
-    log_and_exit "no layout specification found for '${IDENTIFIER}'"
+readarray -t SPEC_MATCHES < <(grep -v "^#" "${SPEC_PATH}" | grep "${IDENTIFIER}")
+if [[ "${#SPEC_MATCHES[@]}" -eq 0 ]]; then
+    __log_and_exit "no layout specification found for '${IDENTIFIER}'"
 fi
 
-log "found spec match(es)='${SPEC_MATCH}'"
+ulogger info "found spec match(es):"
+for SPEC_MATCH in "${SPEC_MATCHES[@]}"; do
+    ulogger info "  - ${SPEC_MATCH}" -n
+done
 
 # ensure that we have only one match for the current identifier; if the original match is
 # different from this "single match", we know we originally found > 1 match
-SINGLE_SPEC_MATCH="$(echo "${SPEC_MATCH}" | head -1)"
-if [[ "${SPEC_MATCH}" != "${SINGLE_SPEC_MATCH}" ]]; then
-    MSG="multiple layout specifications found for '${IDENTIFIER}'"
-    # exit only if using strict mode (that's why we're not just using log_and_exit here)
-    [[ "${STRICT}" == "true" ]] && log_and_exit "${MSG}" || log "${MSG}"
+if [[ "${#SPEC_MATCHES[@]}" -gt 1 ]]; then
+    __log_or_exit "multiple layout specifications found for '${IDENTIFIER}'"
 fi
 
-log "extracting layout specification from match='${SINGLE_SPEC_MATCH}'"
+SPEC_MATCH="${SPEC_MATCHES[0]}"
+ulogger info "extracting layout specification from match='${SPEC_MATCH}'"
 
 # extract get the tmux layout from the spec
-LAYOUT_SPEC="$(echo "${SINGLE_SPEC_MATCH}" | cut -d " " -f4)"
+LAYOUT_SPEC="$(echo "${SPEC_MATCH}" | cut -d " " -f4)"
 if [[ -z "${LAYOUT_SPEC}" ]]; then
-    log_and_exit "unable to extract layout specification from spec match='${SINGLE_SPEC_MATCH}'"
+    __log_and_exit "unable to extract layout specification from spec match='${SPEC_MATCH}'"
 fi
 
-log "using extracted layout specification='${LAYOUT_SPEC}'"
+ulogger info "using extracted layout specification='${LAYOUT_SPEC}'"
 
 # check the current pane dimensions against those in the layout
 CURRENT_PANES="$(tmux list-panes -t "${TARGET_ID}" -F "#{pane_width}x#{pane_height}" | tr '\n' ',')"
 CURRENT_PANES="${CURRENT_PANES:0:-1}"
-LAYOUT_PANES="$(echo "${SINGLE_SPEC_MATCH}" | cut -d " " -f5)"
+LAYOUT_PANES="$(echo "${SPEC_MATCH}" | cut -d " " -f5)"
 
-log "target panes=\"${CURRENT_PANES}\"; layout panes=\"${LAYOUT_PANES}\""
+ulogger info "target panes=\"${CURRENT_PANES}\"; layout panes=\"${LAYOUT_PANES}\""
 
 # if they match, don't do anything
 if [[ "${CURRENT_PANES}" == "${LAYOUT_PANES}" ]] && [[ "${FORCE}" != "true" ]]; then
-    log "target panes match layout panes; exiting"
+    ulogger info "target panes match layout panes; exiting"
     exit 0
 elif [[ "${FORCE}" == "true" ]]; then
-    log "target panes match layout panes but --force option detected; continuing"
+    ulogger info "target panes match layout panes but --force option detected; continuing"
 fi
 
 if [[ "${DRY_RUN}" == "true" ]]; then
     echo "tmux select-layout -t ${TARGET} ${LAYOUT_SPEC}"
-    exit
+    exit 0
 fi
 
 # the lack of quotes around ${LAYOUT_SPEC} is intentional
-tmux select-layout -t "${TARGET}" ${LAYOUT_SPEC}
+tmux select-layout -t "${TARGET}" "${LAYOUT_SPEC}"
 

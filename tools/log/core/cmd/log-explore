@@ -13,23 +13,45 @@ help() {
 cat <<help
 DESCRIPTION
 
+    Utility for viewing/opening log files/directories. Uses include:
+
+        * no arguments - opening the root log directory in an editor
+        * single positional "type" argument - opening in an editor the log file/directory for a specific type
+        * -l|--list flag - listing known log files/directories (see note on "pagers" below)
+        * -t|--tree flag - displaying as a tree known log files/directories (see note on "pagers" below)
+
+    The commands, i.e. "pagers", used to process the -l|--list and -t|--tree flags can be configured via the following mechanisms:
+
+        * list pager (-l|--list)
+          * default: "ls"
+          * toml config: pager.list
+          * env var: ULOGGER_LIST_PAGER
+        * tree pager (-t|--tree)
+          * default: "ls -R"
+          * toml config: pager.tree
+          * env var: ULOGGER_TREE_PAGER
+
+    Note: the editor used is configured via the standard "EDITOR" env var.
+
+
 USAGE
 
     ${USAGE}
 
+POSITIONAL ARGUMENTS
+
+    TYPE                optional; the type of log file/dir to open in an editor
+
 OPTIONS
 
-    -v, --view
-    -l, --list
-    -t, --tree
-    -h, --help
+    -l, --list          optional; if specified, prints to stdout a flat list of existing log files
+    -t, --tree          optional; if specified, prints to stdout a tree of existing log files
+    -h, --help          optional; display this message
 help
 }
 
 
-# MODE=""
-# FILTERS=()
-LS_CMD="$(which lsd &> /dev/null && echo "lsd" || echo "ls")"
+TYPE=""
 
 function __open_in_editor() {
     local field="${1}"
@@ -39,36 +61,27 @@ function __open_in_editor() {
     "${EDITOR}" "${log_path}"
 }
 
-function __list() {
-    "${LS_CMD}" "$@" && return 0 || return 1
-}
+function __view() {
+    local view_op="${1}"
 
-function __tree() {
-    validate_installed "log-explorer" "tree"
-    tree "$@" && return 0 || return 1
+    local -r log_root="$(log-config -f root)"
+    local -r view_cmd="$(log-config -f "pager.${view_op}")"
+
+    $view_cmd "${log_root}" && return 0 || return 1
 }
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -v|--view)
-      __open_in_editor "path" "${2:-}" && exit 0 || exit 1
-      ;;
-    -l|--list)
-      __list "$@"
-      ;;
-    -t|--tree)
-      __tree "$@"
-      ;;
-    -h|--help)
-      help
-      exit 0
-      ;;
-    *)
-      usage
-      exit 1
-      ;;
+    -l|--list) __view "list" && exit 0 || exit 1 ;;
+    -t|--tree) __view "tree" && exit 0 || exit 1 ;;
+    -h|--help) help && exit 0 ;;
+    *) TYPE="${1}" ; shift ;;
   esac
 done
 
-__open_in_editor "root"
+if [[ -n "${TYPE}" ]]; then
+    __open_in_editor "${TYPE}" "path"
+else
+    __open_in_editor "root"
+fi
 
