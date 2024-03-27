@@ -58,12 +58,12 @@ declare -A STRATEGIES=([NORMAL]=1 [NOTIFY]=1 [LOG]=1 [FORCE]=1)
 
 MSGS=""
 LOG_LINE=""
+OUT_LINE=""
 LOG_LEVEL=""
 PREFIX=""
 STRATEGY="NORMAL"
 NO_FMT=""
 CONFIG_PATH=""
-
 
 __to_upper() {
     local str="${1}"
@@ -76,7 +76,6 @@ __process_positional() {
         log-level "${LOG_LEVEL}" -v || exit 1
     else
       MSGS="$([[ -z "${MSGS}" ]] && echo "${1}" || echo "${MSGS} ${1}")"
-      LOG_LINE="${MSGS}"
     fi
 }
 
@@ -146,10 +145,14 @@ LOG_PATH="$(log-config -f path -c "${CONFIG_PATH}")"
 # create log file if it doesn't exist
 [[ ! -f "${LOG_PATH}" ]] && touch "${LOG_PATH}"
 
+LOG_LINE="${MSGS}"
+OUT_LINE="${MSGS}"
+
 # format log line, if necessary
 if [[ -z "${NO_FMT}" ]]; then
     PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(__to_upper "${PREFIX}")] " || echo "")"
     LOG_LINE="[${LOG_LEVEL}] ${PREFIX}${LOG_LINE} ($(date))"
+    OUT_LINE="[${LOG_LEVEL}] ${OUT_LINE}"
 fi
 
 # write to log file, if necessary
@@ -164,8 +167,8 @@ if [[ ${ERR} -eq 2 ]]; then
     exit 1
 # write to stdout, if necessary
 elif [[ "${STRATEGY}" == "NORMAL" ]] && [[ "${ERR}" -eq 0 ]]; then
-    echo "[${LOG_LEVEL}] ${MSGS}"
+    echo "${OUT_LINE}"
 elif [[ "${STRATEGY}" == "FORCE" ]] || [[ "${STRATEGY}" == "NOTIFY" ]]; then
-    echo "[${LOG_LEVEL}] ${MSGS}"
+    echo "${OUT_LINE}"
 fi
 

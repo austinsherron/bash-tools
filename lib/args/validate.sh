@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1102
 
 source /etc/profile.d/shared_paths.sh
 source "${BASH_TOOLS}/lib/args/check.sh"
 
+
+[[ -z "${VALIDATE_USE_ULOGGER+x}" ]] && VALIDATE_USE_ULOGGER="true"
+
+__log_error() {
+    local msg="${1}"
+
+    if [[ -z "${VALIDATE_USE_ULOGGER}" ]]; then
+        echo "[ERROR] ${msg}"
+    else
+        ulogger error "${msg}"
+    fi
+}
 
 #######################################
 # Validates that variable w/ name is non-empty.
@@ -22,7 +35,7 @@ function validate_required() {
     [[ -z "${msg}" ]] && "${name} is a required param"
 
     if [[ -z "${val}" ]]; then
-        ulogger error "${msg}"
+        __log_error "${msg}"
         return 1
     fi
 }
@@ -42,7 +55,26 @@ function validate_required_positional() {
     local val="${2}"
 
     if [[ -z "${val}" ]]; then
-        ulogger error "${desc} is a required positional param"
+        __log_error "${desc} is a required positional param"
+        return 1
+    fi
+}
+
+#######################################
+# Validates that an array is non-empty.
+# Arguments:
+#   name: the name of the variable to validate
+#   the contents of the array to validate
+# Outputs:
+#   Prints error message to stdout depending on the current log level (see: ulogger -h)
+# Returns:
+#   0 if is array is non-empty, 1 otherwise
+#######################################
+function validate_required_array() {
+    local name="${1}" ; shift
+
+    if [[ $# -lt 1 ]]; then
+        __log_error "${name} is a required"
         return 1
     fi
 }
@@ -67,7 +99,7 @@ function validate_mutually_exclusive() {
     local rname="${4}"
 
     if [[ -n "${l}" ]] && [[ -n "${r}" ]]; then
-        ulogger error "${lname} and ${rname} are mutually exclusive"
+        __log_error "${lname} and ${rname} are mutually exclusive"
         return 1
     fi
 }
@@ -84,7 +116,7 @@ function validate_mutually_exclusive() {
 #######################################
 function validate_at_least_one() {
     if [[ $(($# % 2)) -ne 0 ]]; then
-        ulogger error "validate_one_required takes N pairs: the args to validate and their names/flags"
+        __log_error "validate_one_required takes N pairs: the args to validate and their names/flags"
         return 2
     fi
 
@@ -101,7 +133,7 @@ function validate_at_least_one() {
     local names_str
     names_str="$(echo "${names[@]}" | tr ' ' ', ')"
 
-    ulogger error "one of ${names_str} is required"
+    __log_error "one of ${names_str} is required"
 }
 
 #######################################
@@ -116,17 +148,13 @@ function validate_at_least_one() {
 #   0 if the provided value is a member of the set of valid values, 1 otherwise
 #######################################
 function validate_one_of() {
-    local valid_vals=()
+    local name="${1}" ; shift
+    local val="${1}";  shift
 
-    local name="${1}"
-    local val="${2}"
-    shift
-    shift
+    is_one_of "${val}" "$@" && return 0
 
-    is_one_of "${val}" $@ && return 0
-
-    local valid_vals_str="$(echo "${valid_vals[*]}" | tr " " "|")"
-    ulogger error "${name} must be one of '${valid_vals_str}', not '${val}'"
+    local -r valid_vals_str="$(echo "$@" | tr " " "|")"
+    __log_error "${name} must be one of '${valid_vals_str}', not '${val}'"
     return 1
 }
 
@@ -152,7 +180,7 @@ function validate_num_args() {
     [[ $# -eq 3 ]] && local caller="${3}: "
     [[ $nreq -gt 1 ]] && arg="arguments"
 
-    ulogger error "${caller} requires exactly $nreq ${arg} but got $nactual"
+    __log_error "${caller} requires exactly $nreq ${arg} but got $nactual"
     return 1
 }
 
@@ -173,7 +201,7 @@ function validate_min_args() {
     local nactual=$2
     local caller="${3}"
     local exclusive="${4:-}"
-    local sign="$([[ -z "${exclusive}" ]] && echo ">=" || echo ">")"
+    local -r sign="$([[ -z "${exclusive}" ]] && echo ">=" || echo ">")"
 
     if [[ -z "${exclusive}" ]] && [[ $nactual -ge $min ]]; then
         return 0
@@ -181,9 +209,56 @@ function validate_min_args() {
         return 0
     fi
 
-    local arg="$([[ $min -gt 1 ]] && echo "arguments" || echo "argument")"
-    ulogger error "${caller} requires ${sign} $min ${arg} but got $nactual"
+    local -r arg="$([[ $min -gt 1 ]] && echo "arguments" || echo "argument")"
+    __log_error "${caller} requires ${sign} $min ${arg} but got $nactual"
     return 1
+}
+
+#######################################
+# Validates that the provided value conforms to the provided cond.
+# Arguments:
+#   name: the name of the value to validate
+#   num: the value to validate
+#   cond: a condition, in the format "operator value", i.e. "> 4", "<= -1", to which num must conform
+# Outputs:
+#   Prints error message to stdout depending on the current log level (see: ulogger -h)
+# Returns:
+#   0 if num conforms to the provided cond, 1 otherwise
+#######################################
+function validate_num() {
+    local name="${1}" ; local num=$2 ; local cond="${3}"
+
+    if [[ "$(($num "${cond}"))" -eq 0 ]]; then
+        __log_error "${name} (${num}) must be ${cond}"
+        return 1
+    fi
+}
+
+#######################################
+# Validates that the provided value conforms to the provided range conditions.
+# Arguments:
+#   name: the name of the value to validate
+#   num: the value to validate
+#   lrange: lower bound range condition, in the format "operator value", i.e. "> 4", "<= -1", to which num must conform
+#   hrange: a condition, in the format "operator value", i.e. "> 4", "<= -1", to which num must conform
+#   urange: upper bound range condition, in the format "operator value", i.e. "> 4", "<= -1", to which num must conform
+# Outputs:
+#   Prints error message to stdout depending on the current log level (see: ulogger -h)
+# Returns:
+#   0 if num conforms to the provided cond, 1 otherwise
+#######################################
+function validate_range() {
+    local name="${1}" ; local num=$2 ; local lrange="${3}" ; local urange="${4}"
+
+    if [[ "$(($num "${lrange}"))" -eq 0 ]]; then
+        __log_error "${name} (${num}) must be ${lrange}"
+        return 1
+    fi
+
+    if [[ "$(($num "${urange}"))" -eq 0 ]]; then
+        __log_error "${name} (${num}) must be ${lrange} and ${urange}"
+        return 1
+    fi
 }
 
 #######################################
@@ -204,7 +279,7 @@ function validate_max_args() {
     local caller="${3}"
     local exclusive="${4:-}"
     local sign="" && [[ -z "${exclusive}" ]] && sign="<="
-    local sign="$([[ -z "${exclusive}" ]] && echo "<=" || echo "<")"
+    local -r sign="$([[ -z "${exclusive}" ]] && echo "<=" || echo "<")"
 
     if [[ -z "${exclusive}" ]] && [[ $nactual -le $max ]];
         then return 0
@@ -212,8 +287,8 @@ function validate_max_args() {
         then return 0
     fi
 
-    local arg="$([[ $max -gt 1 ]] && echo "arguments" || echo "argument")"
-    ulogger error "${caller} requires ${sign} $max ${arg} but got $nactual"
+    local -r arg="$([[ $max -gt 1 ]] && echo "arguments" || echo "argument")"
+    __log_error "${caller} requires ${sign} $max ${arg} but got $nactual"
     return 1
 }
 
@@ -232,7 +307,7 @@ function validate_file() {
     local name="${2}"
 
     if [[ ! -s "${path}" ]]; then
-        ulogger error "${name} must refer to a valid file"
+        __log_error "${name} must refer to a valid file"
         return 1
     fi
 }
@@ -270,7 +345,7 @@ function validate_dir() {
     local name="${2}"
 
     if [[ ! -d "${path}" ]]; then
-        ulogger error "${name} must refer to a valid directory"
+        __log_error "${name} must refer to a valid directory"
         return 1
     fi
 }
@@ -292,7 +367,7 @@ function validate_json_key() {
     local desc="${3:-${key}}"
 
     if [[ "$(jq "${key}" "${path}")" == "null" ]]; then
-        ulogger error "unable to find ${desc} in json file=${path}"
+        __log_error "unable to find ${desc} in json file=${path}"
         return 1
     fi
 }
@@ -314,7 +389,7 @@ function validate_yaml_key() {
     local name="${3:-${key}}"
 
     if [[ "$(yq "${key}" "${path}")" == "null" ]]; then
-        ulogger error "unable to find ${name} in yaml file=${path}"
+        __log_error "unable to find ${name} in yaml file=${path}"
         return 1
     fi
 }
@@ -336,7 +411,7 @@ function validate_toml_key() {
     local name="${3:-${key}}"
 
     if [[ "$(tq "${path}" "${key}")" == "null" ]]; then
-        ulogger error "unable to find ${name} in toml file=${path}"
+        __log_error "unable to find ${name} in toml file=${path}"
         return 1
     fi
 }
@@ -354,10 +429,10 @@ function validate_toml_key() {
 function validate_installed() {
     local caller="${1}" && shift
 
-    check_installed $@ && return 0
+    check_installed "$@" && return 0
 
-    local pkgs="$(join_by ", " $@)"
-    ulogger error "${caller} requires that these packages be installed: ${pkgs}"
+    local -r pkgs="$(join_by ", " "$@")"
+    __log_error "${caller} requires that these packages be installed: ${pkgs}"
 }
 
 #######################################
@@ -374,7 +449,7 @@ function validate_required_env() {
         local var_name="${1}"
 
         if [[ -z "${!var_name+x}" ]]; then
-            ulogger error "env var=${var_name} is not set"
+            __log_error "env var=${var_name} is not set"
             return 1
         fi
     done

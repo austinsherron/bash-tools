@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2034
+
+set -Eeuo pipefail
+
+source "${BASH_TOOLS}/lib/args/validate.sh"
+
+
+USAGE="log-env [-t [type]] [-p [prefix]] [-s [strategy]] [-q{q}]|[-v{v}] [--set] [-f]"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Utility for reading/setting ulogger environment variables. Default behavior is to read values based on the provided flags. Use the --set and --overwrite flags to perform updates.
+
+    Note: due to the nature of setting environment variables via scripts/commands, the --set flag should be used w/ an "eval" statement to actually update env vars in the caller's
+    shell. For example:
+
+        eval "\$(log-env -t install -p tools -vvv --set -f)"
+        eval "\$(log-env vol -qqq)"
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    mode                optional; must be the first argument; "vol" is the only recognized value; when used, only verbosity related flags are considered, and values are forcibly "set"
+
+OPTIONS
+
+    -t, --type          optional; provide argument to set; read or set "ULOGGER_TYPE" env var
+    -p, --prefix        optional; provide argument to set; read or set "ULOGGER_PREFIX" env var
+    -s, --strategy      optional; provide argument to set; read or set "ULOGGER_STRATEGY" env var
+    -q{-|q}             optional; provide argument to set; read or set "ULOGGER_LEVEL_XFM" env var; # "q"s = # of levels to subtract from log message levels
+    -v{-|v}             optional; provide argument to set; read or set "ULOGGER_TYPE" env var; # "v"s = # of levels to add to log message levels
+    --set               optional; if provided, update unset environment varibles
+    --clear             optional; if provided, clears the specified environment varibles
+    -f|--force          optional; if provided, overwrite existing environment values
+    -h, --help          optional; display this message
+help
+}
+
+
+TYPE=""
+PREFIX=""
+STRATEGY=""
+VERBOSE=""
+LEVEL_XFM=""
+SET=""
+CLEAR=""
+FORCE=""
+
+function __process_level_xfm() {
+    local flag="${1##-}"
+
+    if [[ "${flag}" =~ ^v+$ ]]; then
+        LEVEL_XFM="+${#flag}"
+    elif [[ "${flag}" =~ ^q+$ ]]; then
+        LEVEL_XFM="-${#flag}"
+    else
+        echo "[ERROR] unrecognized verbosity modifier: -${flag}"
+    fi
+}
+
+function __read_var() {
+    local val="${1}"
+    local var="${2}"
+
+    if [[ -n "${val}" ]] && [[ -z "${SET}" ]] && [[ -z "${CLEAR}" ]]; then
+        echo -n "${var}="
+        [[ -n "${!var+x}" ]] && echo "\"${!var}\"" || echo ""
+    fi
+
+    return 0
+}
+
+function __set_var() {
+    local val="${1}"
+    local var="${2}"
+
+    if [[ -z "${SET}" ]]; then
+        return 0
+    fi
+
+    if [[ -n "${val}" ]] && [[ -z "${!var+x}" || -n "${FORCE}" ]]; then
+        echo "export ${var}=${val}"
+    fi
+}
+
+function __clear_var() {
+    local val="${1}"
+    local var="${2}"
+
+    if [[ -z "${CLEAR}" ]]; then
+        return 0
+    fi
+
+    if [[ -n "${val}" ]] && [[ -n "${!var+x}" ]]; then
+        echo "unset ${var}"
+    fi
+}
+
+function __handle_var() {
+    local var="${1}"
+    local val="${!var}"
+    local ulogger_var="ULOGGER_${var}"
+
+    __read_var "${val}" "${ulogger_var}"
+    __set_var "${val}" "${ulogger_var}"
+    __clear_var "${val}" "${ulogger_var}"
+}
+
+function __volume_mode() {
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        -q*) __process_level_xfm "${1}" ; shift ;;
+        -v*) __process_level_xfm "${1}" ; shift ;;
+        --verbose) VERBOSE="true" ; shift ;;
+        *) shift ;;
+      esac
+    done
+
+    __handle_var "LEVEL_XFM"
+    [[ -z "${LEVEL_XFM}" ]] && __handle_var "VERBOSE"
+
+    return 0
+}
+
+function __normal_mode() {
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        -t|--type) TYPE="${2:-true}" ; [[ -n "${2+x}" ]] && shift ; shift ;;
+        -p|--prefix) PREFIX="${2:-true}" ; [[ -n "${2+x}" ]] && shift ; shift ;;
+        -s|--strategy) STRATEGY="${2:-true}" ; [[ -n "${2+x}" ]] && shift ; shift ;;
+        -q*) __process_level_xfm "${1}" ; shift ;;
+        -v*) __process_level_xfm "${1}" ; shift ;;
+        --verbose) VERBOSE="true" ; shift ;;
+        --set) SET="true" ; shift ;;
+        --clear) CLEAR="true" ; shift ;;
+        -f|--force) FORCE="true" ; shift ;;
+        -h|--help) help && exit 0 ;;
+        *) usage && exit 1 ;;
+      esac
+    done
+
+    __handle_var "TYPE"
+    __handle_var "PREFIX"
+    __handle_var "STRATEGY"
+    __handle_var "LEVEL_XFM"
+    [[ -z "${LEVEL_XFM}" ]] && __handle_var "VERBOSE"
+
+    return 0
+}
+
+if [[ $# -ge 1 ]] && [[ "${1}" == "vol" ]]; then
+    SET="true" ; FORCE="true" ; shift
+    __volume_mode "$@"
+else
+    __normal_mode "$@"
+fi
+
+exit 0
+
