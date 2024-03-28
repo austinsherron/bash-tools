@@ -32,7 +32,7 @@ DESCRIPTION
         * layout-specification: a window specification recognized by "tmux select-layout"; see "man tmux" for details
         * pane-dimensions: a comma separated list of dimensions of panes in the layout, i.e.: 319x88,79x88
 
-    The default location for window layout specifications is "\${HOME}/.config/tmux/layouts", or they can be passed via -s.
+    The default location for window layout specifications is "\${XDG_CONFIG_HOME}/tmux/layouts", or they can be passed via -s.
 
     This script can be run in either default or "strict" mode. In default mode, all errors are silently ignored, resulting no action. Strict mode introduces the following
     error cases, which, when triggered, result in non-zero return codes:
@@ -52,7 +52,7 @@ OPTIONS
 
     -l, --layout        optional; if not provided, will pull value from window name if in the format  ".* \(layout-type\)"; the layout to use
     -t, --target        optional, defaults to the active window; the name of the window for which to set a layout
-    -s, --specs         optional, default to "\${HOME}/.config/tmux/layouts"; a file that contains layout specifications in the format describe about
+    -s, --specs         optional, default to "\${XDG_CONFIG_HOME}/tmux/layouts"; a file that contains layout specifications in the format describe about
     --strict            optional; can't be used w/ --dry-run; if specified, error cases will case the script to exit with non-zero return codes; see above for specific
                         behavioral description
     --force             optional; if specified, forces resize even if pane dimensions match those in the layout spec
