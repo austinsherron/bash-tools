@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_TOOLS}/lib/args/check.sh"
+source "${BASH_TOOLS}/lib/args/parse.sh"
+
+
+declare -A CMDS=(
+    [ssh]="   ssh into a granica admin server"
+)
+
+declare -A CMD_ACTIONS=(
+    [ssh]="__handle_ssh"
+)
+
+function __cmds() {
+    local sep="${1:-|}"
+    echo "${!CMDS[@]}" | tr " " "${sep}"
+}
+
+function __cmd_descriptions() {
+    for cmd in "${!CMDS[@]}"; do
+        echo "    ${cmd}       ${CMDS[${cmd}]}"
+    done
+}
+
+USAGE="granica [cmd] {flags}"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Consolidated entry point to granica convenience utilities.
+
+CMDS
+
+$(__cmd_descriptions)
+
+USAGE
+
+    ${USAGE}
+help
+}
+
+CMD="write"
+
+function __handle_ssh() { granica-ssh "$@" ; }
+
+FIRST="${1:-x}"
+
+if is_help_flag "${FIRST}"; then
+    help && exit 0
+fi
+
+if is_one_of "${FIRST}" "${!CMD_ACTIONS[@]}"; then
+    CMD="${FIRST}" ; shift
+fi
+
+"${CMD_ACTIONS[${CMD}]}" "$@"
+

@@ -38,3 +38,37 @@ function check_installed() {
 
     return 0
 }
+
+#######################################
+# Checks if the provided value is empty.
+# Arguments:
+#   val: the value to check
+# Returns:
+#   0 if the provided value is empty, 1 otherwise
+#######################################
+function is_empty() {
+    local val="${1}"
+
+    if [[ -z "${val}" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+#######################################
+# Checks that the provided values are empty.
+# Arguments:
+#   n values to check
+# Returns:
+#   0 if all values are empty, 1 otherwise
+#######################################
+function all_empty() {
+    while [[ $# -gt 0 ]]; do
+        if ! is_empty "${1}"; then return 1 ; fi
+        shift
+    done
+
+    return 0
+}
+
