@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_TOOLS}/lib/args/check.sh"
+source "${BASH_TOOLS}/lib/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
+
+
+USAGE="granica-ssh [-e env]|[-s admin-server -p project [-z zone]] [-c config]"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Abstracts away the details of ssh-ing into a granica cluster, specifically the admin server.
+
+    This script is configurd via toml file whose default location is "\${XDG_CONFIG_HOME}/granica/config.toml". Configuration reelvant to this script includes blocks of
+    the following formats:
+
+        [env]
+        default = "env_key"
+
+        [env.env_key]
+        cloud = "gcp|aws"
+        admin_server = "[admin-server-hash]"
+        project = "[admin-server-project-id]"
+        zone = "[admin-server-zone]"
+
+    "env.default" specifies which environment config block should be used if no flags are provided to this scripts. The config file can specify an arbitrary number of
+    "env.[env_key]" blocks that configure specific granica environments.
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -e, --env          optional; defaults to config > env.default, if no flags are provided to this script; the key of the environment to access
+    -c, --cloud        optional; ignored if -e|--env is provided; the cloud of the environment to access
+    -s, --server       optional; ignored if -e|--env is provided; the hash of the admin server to access
+    -p, --project      optional; ignored if -e|--env is provided; defaults to the project configured in the relevant cloud provider's cli tool; the project id of the admin server to access
+    -z, --zone         optional; ignored if -e|--env is provided; defaults to the zone configured in the relevant cloud provider's cli tool; the zone of the admin server to access
+    --config           optional; defaults to "\${XDG_CONFIG_HOME}/granica/config.toml"; a path to the config file to use
+    -d|--dry-run       optional; if provided, show the ssh command to run, but don't execute it
+    -h, --help         optional; display this message
+help
+}
+
+
+validate_installed "granica-ssh" tq gcloud
+
+ENV=""
+CLOUD=""
+SERVER=""
+PROJECT=""
+ZONE=""
+CONFIG="${XDG_CONFIG_HOME}/granica/config.toml"
+DRY_RUN=""
+
+function __get_from_config() {
+    local selector="${1}"
+    tq "${CONFIG}" "${selector}" | xargs
+}
+
+function __get_from_cloud_config() {
+    local name="${1}"
+
+    if [[ "${CLOUD}" == "gcp" ]]; then
+        gcloud config get-value "${name}" || echo ""
+    elif [[ "${CLOUD}" == "aws" ]]; then
+        echo "[ERROR] aws not supported"
+        return 1
+    else
+        echo "[ERROR] unrecognized cloud: ${CLOUD}"
+    fi
+}
+
+function __set_env_from_config() {
+    CLOUD="$(__get_from_config ".env.${ENV}.cloud")"
+    SERVER="$(__get_from_config ".env.${ENV}.admin_server")"
+    PROJECT="$(__get_from_config ".env.${ENV}.project")"
+    ZONE="$(__get_from_config ".env.${ENV}.zone")"
+}
+
+function __set_env_vars() {
+    if all_empty "${ENV}" "${CLOUD}" "${SERVER}" "${PROJECT}" "${ZONE}"; then
+        ENV="$(__get_from_config .env.default)" || return 1
+    fi
+
+    if [[ -n "${ENV}" ]]; then __set_env_from_config || return 1 ; fi
+    if [[ -z "${PROJECT}" ]]; then PROJECT="$(__get_from_cloud_config "project")" || return 1 ; fi
+    if [[ -z "${ZONE}" ]]; then ZONE="$(__get_from_cloud_config "compute/zone")" || return 1 ; fi
+}
+
+function __get_ssh_cmd() {
+    if [[ "${CLOUD}" == "gcp" ]]; then
+        echo "gcloud compute ssh projectn@project-n-admin-server-${SERVER} --project=${PROJECT} --zone=${ZONE}"
+    elif [[ "${CLOUD}" == "aws" ]]; then
+        echo "[ERROR] aws not supported"
+        return 1
+    else
+        echo "[ERROR] unrecognized cloud: ${CLOUD}"
+    fi
+}
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -e|--env) ENV="${2:-}" ; shift ; shift ;;
+    -c|--cloud) CLOUD="${2:-}" ; shift ; shift ;;
+    -s|--server) SERVER="${2:-}" ; shift ; shift ;;
+    -p|--project) PROJECT="${2:-}" ; shift ; shift ;;
+    -z|--zone) ZONE="${2:-}" ; shift ; shift ;;
+    --config) CONFIG="${2:-}" ; shift ; shift ;;
+    -d|--dry-run) DRY_RUN="true" ; shift ;;
+    -h|--help) help && exit 0 ; shift ;;
+    *) echo -n "error: " && usage && exit 1 ;;
+  esac
+done
+
+
+validate_file "${CONFIG}" "-c|--config" || exit 1
+
+__set_env_vars || exit 1
+
+validate_required "-e|--env or -c|--cloud" "${CLOUD}" || exit 1
+validate_required "-e|--env or -s|--server" "${SERVER}" || exit 1
+validate_required "-e|--env or -p|--project" "${PROJECT}" || exit 1
+validate_required "-e|--env or -z|--zone" "${ZONE}" || exit 1
+
+SSH_CMD="$(__get_ssh_cmd)"
+
+if [[ -z "${DRY_RUN}" ]]; then
+    $SSH_CMD
+else
+    echo "${SSH_CMD}"
+fi
+

@@ -32,7 +32,7 @@ function validate_required() {
     local val="${2}"
     local msg="${3:-}"
 
-    [[ -z "${msg}" ]] && "${name} is a required param"
+    [[ -z "${msg}" ]] && msg="${name} is a required param"
 
     if [[ -z "${val}" ]]; then
         __log_error "${msg}"
@@ -304,7 +304,7 @@ function validate_max_args() {
 #######################################
 function validate_file() {
     local path="${1}"
-    local name="${2}"
+    local name="${2:-${path}}"
 
     if [[ ! -s "${path}" ]]; then
         __log_error "${name} must refer to a valid file"
@@ -324,7 +324,7 @@ function validate_file() {
 #######################################
 function validate_optional_file() {
     local path="${1}"
-    local name="${2}"
+    local name="${2:-${name}}"
 
     [[ -n "${path}" ]] && ! validate_file "${path}" "${name}" && return 1
     return 0
@@ -342,7 +342,7 @@ function validate_optional_file() {
 #######################################
 function validate_dir() {
     local path="${1}"
-    local name="${2}"
+    local name="${2:-${path}}"
 
     if [[ ! -d "${path}" ]]; then
         __log_error "${name} must refer to a valid directory"
