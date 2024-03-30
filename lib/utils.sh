@@ -167,3 +167,41 @@ function fn_exists() {
     [[ $(type -t "${fn_name}") == function ]] && return 0 || return 1
 }
 
+
+#######################################
+# Checks if the environment variable w/ the provided name exists.
+# Arguments:
+#   var: the name of the environment variable to reads
+# Returns:
+#   0 if if the variable exists
+#   1 if if the variable doesn't exist
+#   2 if function arguments aren't valid
+#######################################
+function var_exists() {
+    validate_num_args 1 $# "var_exists" || return 2
+
+    local var="${1}"
+    [[ -n "${!var+x}" ]] || return 1
+
+    return 0
+}
+
+#######################################
+# Reads the environment variable w/ the provided name, if it exists.
+# Arguments:
+#   var: the name of the environment variable to reads
+# Outputs:
+#   Writes the value associated w/ the provided env var to stdout, if it exists
+# Returns:
+#   0 if successful and if function arguments are valid
+#   2 if function arguments aren't valid
+#######################################
+function get_env() {
+    validate_num_args 1 $# "get_env" || return 2
+
+    local var="${1}"
+    [[ -n "${!var+x}" ]] && echo "${!var}"
+
+    return 0
+}
+

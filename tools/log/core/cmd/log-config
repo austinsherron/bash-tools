@@ -2,6 +2,7 @@
 
 set -Eeuo pipefail
 
+source "${BASH_TOOLS}/lib/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
 source "${BASH_TOOLS}/lib/utils.sh"
 
 
@@ -14,6 +15,7 @@ declare -A FIELDS=(
     [dir]="the log file parent dir, considering type specific config"
     [root]="the global log root dir"
     [type]="the current logger type, which informs configuration "
+    [disabled]="if logging is dsiabled, considering type specific config"
     [config]="the path to the current user defined logger config file"
     [pager.list]="the command used to view the list of log files w/ log-explore -l"
     [pager.tree]="the command used to view the list of log files w/ log-explore -t"
@@ -25,6 +27,7 @@ declare -A FIELD_ACTIONS=(
     [dir]="__get_dir"
     [type]="__get_type"
     [root]="__get_root"
+    [disabled]="__get_disabled"
     [config]="__get_config"
     [pager.list]="__get_pager"
     [pager.tree]="__get_pager"
@@ -55,8 +58,8 @@ help() {
 cat <<help
 DESCRIPTION
 
-    Reads configuration for ulogger. By default, configuration is sourced from \${XDG_CONFIG_HOME}/ulogger/config.toml, but a path to a config file can be explicitly passed via -c|--config.
-    Required configuration values have the following defaults:
+    Reads configuration for ulogger. By default, configuration is sourced from \${XDG_CONFIG_HOME}/ulogger/config.toml, but a path to a config file can be explicitly passed
+    via -c|--config. Required configuration values have the following defaults:
 
         * root = "\${HOME}/.local/state/logs" - can be set via \$LOG_ROOT
         * type.default = "default" - can be set via \$DEFAULT_LOG_TYPE
@@ -101,7 +104,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -t|--type)
-      TYPE="${2}"
+      [[ -z "${TYPE}" ]] && TYPE="${2}"
       shift
       shift
       ;;
@@ -154,10 +157,16 @@ function __get_default_config() {
 }
 
 function __get_from_config_file() {
-    local path="${1}"
-    shift
+    local path="${1}" ; shift
 
-    tq "${path}" "$@" -s | xargs
+    # tq "${path}" "$@" -s | xargs
+    local -r val="$(yq "$@" "${path}")"
+
+    if [[ "${val}" == "null" ]]; then
+        echo ""
+    else
+        echo "${val}"
+    fi
 }
 
 function __get_from_default_config() {
@@ -181,6 +190,23 @@ function __get_from_config() {
     fi
 }
 
+function __default_type() {
+    local -r default_type="$(__get_from_config .type)"
+    [[ -z "${default_type}" ]] && __get_default_type_from_env
+    echo "${default_type}"
+}
+
+function __set_log_type() {
+    if [[ -z "${TYPE}" ]]; then
+        TYPE="$(__default_type)"
+    fi
+
+    if [[ -z "${TYPE}" ]]; then
+        echo "[ERROR] unable to determine logger type from config"
+        return 1
+    fi
+}
+
 function __log_root() {
     local log_root=""
 
@@ -191,28 +217,10 @@ function __log_root() {
     echo "[ERROR] unable to determine log root from config" && exit 1
 }
 
-function __default_type() {
-    local -r default_type="$(__get_from_config .type)"
-    [[ -z "${default_type}" ]] && __get_default_type_from_env
-    echo "${default_type}"
-}
-
-function __get_log_type() {
-    [[ -n "${TYPE}" ]] && echo "${TYPE}" && return 0
-
-    local -r type="$(__default_type)"
-    [[ -n "${type}" ]] && echo "${type}" && return 0
-
-    echo "[ERROR] unable to determine logger type from config" && exit 1
-}
-
 function __current_log_level() {
-    local type
     local level
 
-    type="$(__get_log_type)"
-    level="$(__get_from_config ".${type}.level")"
-
+    level="$(__get_from_config ".${TYPE}.level")"
     [[ -z "${level}" ]] && level="$(__get_from_config .level.current)"
     [[ -z "${level}" ]] && level="$(__get_from_config .level.default)"
     [[ -z "${level}" ]] && level="$(__get_log_level_from_env)"
@@ -222,15 +230,13 @@ function __current_log_level() {
 }
 
 function __get_type_root() {
-    local type="${1}"
-    __get_from_config ".${type}.directory"
+    __get_from_config ".${TYPE}.directory"
 }
 
 function __get_type_file() {
-    local type="${1}"
-    local -r ext="$(__get_from_config ".${type}.extension")"
-    local -r type_file="$(__get_from_config ".${type}.file")"
-    echo "${type_file:-${type}}.${ext:-log}"
+    local -r ext="$(__get_from_config ".${TYPE}.extension")"
+    local -r type_file="$(__get_from_config ".${TYPE}.file")"
+    echo "${type_file:-${TYPE}}.${ext:-log}"
 }
 
 function __make_path() {
@@ -246,25 +252,30 @@ function __make_path() {
 }
 
 function __get_type_dir_path() {
-    local type="${1:-}"
     local path_parts=()
 
-    [[ -z "${type}" ]] && type="$(__get_log_type)"
     path_parts+=("$(__log_root)")
-    path_parts+=("$(__get_type_root "${type}")")
+    path_parts+=("$(__get_type_root)")
 
     __make_path "${path_parts[@]}"
 }
 
 function __get_full_type_path() {
-    local type
-    type="$(__get_log_type)"
-
     local path_parts=()
-    path_parts+=("$(__get_type_dir_path "${type}")")
-    path_parts+=("$(__get_type_file "${type}")")
+    path_parts+=("$(__get_type_dir_path)")
+    path_parts+=("$(__get_type_file)")
 
     __make_path "${path_parts[@]}"
+}
+
+function __get_disabled_from_config() {
+    local disabled=""
+
+    disabled="$(__get_from_config .disabled)"
+    [[ -z "${disabled}" ]] && disabled="$(__get_from_config ".${TYPE}.disabled")"
+    [[ -z "${disabled}" ]] && disabled="$(get_env  "ULOGGER_DISABLED")"
+
+    echo "${disabled}"
 }
 
 function __get_pager_from_env() {
@@ -289,34 +300,30 @@ function __get_pager_from_config() {
 }
 
 function __handle_query() {
-    if [[ -z "${!QUERY_TYPES[${QUERY}]}" ]]; then
+    if [[ -z "${QUERY_TYPES[${QUERY}]}" ]]; then
         echo "-q|--query must be one of '$(__query_types)' not '${QUERY}'"
         return 1
     fi
 
-    eval "__get_${QUERY}_config" || return 1
+    "__get_${QUERY}_config" || return 1
 }
 
 function __get_level() { __current_log_level ; }
 function __get_path() { __get_full_type_path ; }
 function __get_dir() { __get_type_dir_path ; }
 function __get_root() { __log_root ; }
-function __get_type() { __get_log_type ; }
+function __get_type() { echo "${TYPE}" ; }
+function __get_disabled() { __get_disabled_from_config ; }
 function __get_config() { echo "${CONFIG_PATH}" ; }
 function __get_pager() { __get_pager_from_config ; }
 
 function __handle_field() {
-    if [[ -z "${FIELDS[${FIELD}]+x}" ]]; then
-        echo "-f|--field (${FIELD}) is not a valid field"
-        return 1
-    fi
-
+    validate_one_of "-f|--field" "${FIELD}" "${!FIELDS[@]}" || return 1
     "${FIELD_ACTIONS[${FIELD}]}" || return 1
 }
 
-if [[ ! -s "${CONFIG_PATH}" ]]; then
-    echo "[ERROR] -c|--config path must refer to a valid file"
-fi
+validate_file "${CONFIG_PATH}" "-c|--config" || exit 1
+__set_log_type || exit 1
 
 if [[ -n "${EDIT}" ]]; then
     ${EDITOR} "${CONFIG_PATH}"
@@ -325,6 +332,7 @@ elif [[ -n "${QUERY}" ]]; then
 elif [[ -n "${FIELD}" ]]; then
     __handle_field || exit 1
 else
-    echo "[ERROR] one of -f|--field or -q|--query is required" && exit 1
+    echo "[ERROR] one of -f|--field or -q|--query is required"
+    exit 1
 fi
 
