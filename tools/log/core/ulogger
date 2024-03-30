@@ -2,6 +2,11 @@
 
 set -Eeuo pipefail
 
+
+if [[ -n "$(log-env -r disabled -v)" ]] || [[ -n "$(log-config -f disabled)" ]]; then
+    exit 0
+fi
+
 source "${BASH_TOOLS}/lib/args/check.sh"
 source "${BASH_TOOLS}/lib/args/parse.sh"
 
