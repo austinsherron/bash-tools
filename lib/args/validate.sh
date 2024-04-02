@@ -159,6 +159,52 @@ function validate_one_of() {
 }
 
 #######################################
+# If a value is non-empty, validates that it is one of a constrained set of values.
+# Arguments:
+#   name: the name of the variable to validate
+#   val: the value to validate
+#   the set of values of which val must be a member to be considered valid
+# Outputs:
+#   Prints error message to stdout depending on the current log level (see: ulogger -h)
+# Returns:
+#   0 if the provided value is empty or is a member of the set of valid values, 1 otherwise
+#######################################
+function validate_one_of_optional() {
+    local name="${1}" ; shift
+    local val="${1}";  shift
+
+    if [[ -n "${val}" ]]; then
+        validate_one_of "${name}" "${val}" "$@" || return 1
+    fi
+}
+
+#######################################
+# Validates the (line) length of the provided string. Useful when a sub-command is expected to return "n" lines.
+# Arguments:
+#   lines: the string to validate
+#   len: the required line length of lines
+#   desc: optional, defaults to lines; a description of the variable being validated (for use in error messages)
+#   msg: optional; the error message to use
+# Outputs:
+#   Prints error message to stdout depending on the current log level (see: ulogger -h)
+# Returns:
+#   0 if the number of lines in the provided value == len, 1 otherwise
+#######################################
+function validate_output_len() {
+    local lines="${1}"
+    local len="${2}"
+    local desc="${3:-${lines}}"
+    local msg="${4:-${lines} must be len == ${len}}"
+
+    readarray -t split < <(echo "${lines}")
+
+    if [[ "${#split[@]}" -ne $len ]]; then
+        __log_error "${msg}"
+        return 1
+    fi
+}
+
+#######################################
 # Validates that nreq == nactual.
 # Arguments:
 #   nreq: the number against which to validate
@@ -171,13 +217,10 @@ function validate_one_of() {
 function validate_num_args() {
     local nreq=$1
     local nactual=$2
-
-    [[ $nactual -eq $nreq ]] && return 0
-
-    local caller=""
+    local caller="${3:-function}"
     local arg="argument"
 
-    [[ $# -eq 3 ]] && local caller="${3}: "
+    [[ $nactual -eq $nreq ]] && return 0
     [[ $nreq -gt 1 ]] && arg="arguments"
 
     __log_error "${caller} requires exactly $nreq ${arg} but got $nactual"

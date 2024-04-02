@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+export VALIDATE_USE_ULOGGER=""
+
+source "${BASH_TOOLS}/lib/args/validate.sh"
+source "${BASH_TOOLS}/lib/data.sh"
+source "${BASH_TOOLS}/lib/db/aws/dynamo.sh"
+source "${BASH_TOOLS}/lib/version.sh"
+
+
+USAGE="granica-version [query/version] [-v] [-f] [-n] [-c customer] [---config path]"
+
+usage() {
+    echo "${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Utility for querying/validating deployed granica versions. Queries can be performed for specific customers via -c|--customer, or for the
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    QUERY/VERSION       optional, defaults to "current"; version query, or the version to validate, if -v|--validate is provided; note that provided versions can optionally exclude
+                        prefixes/suffixes; if the provided version doesn't include a prefix/suffix, the version will be templated into the format string specified for the
+                        provided/configured customer via "customer.[customer].version_format"
+
+OPTIONS
+
+    -v|--validate       optional; if specified, validates the provided version; rc=0 indicates a valid version, rc=1 indicates invalid; if a version string is provided (instead of
+                        a query), validation is triggered even if this flag is omitted
+    -f|--format         optional; if specified, validates and formats the provided version according the the format string configured for the current customer
+    -n|--next           optional; defaults to "train/patch"; get the next version, based on the current version and the provided version incrementation strategy
+    -c|--customer       optional; defaults to "customer.default" in granica config file; the customer for which to perform a version query
+    --config            optional; defaults to "\${XDG_CONFIG_HOME}/granica/config.toml"; a path to the config file to use
+    -h, --help          optional; display this message
+help
+}
+
+
+declare -A QUERY_TYPE=(
+    [current]="__version_range"
+    [latest]="__version_range"
+    [all]="__versions"
+    [history]="__versions"
+    [default]="__version_range"
+)
+
+VERSION=""
+QUERY="default"
+IDENTIFIER=""
+
+RANGE_REVERSED="true"
+RANGE="1p"
+
+VALIDATE=""
+FORMAT=""
+NEXT=""
+
+CUSTOMER=""
+CONFIG="${XDG_CONFIG_HOME}/granica/config.toml"
+
+function __set_customer() {
+    if [[ -z "${CUSTOMER}" ]]; then
+        CUSTOMER="$(yaml::get "${CONFIG}" .customer.default)"
+    fi
+
+    validate_required "-c|--customer" "${CUSTOMER}"
+}
+
+function __process_range_query() {
+    local direction="${1:-}"
+    local start="${2}"
+    local end="${3:-}"
+
+    RANGE="${start}"
+    [[ -n "${end}" ]] && RANGE="${RANGE},${end}"
+    RANGE="${RANGE}p"
+
+    [[ "${direction}" != "-" ]] && RANGE_REVERSED=""
+
+    QUERY="default"
+    return 0
+}
+
+function __process_validate() {
+    IDENTIFIER="${QUERY}"
+    VALIDATE="true"
+    QUERY="all"
+
+    if version::has "${IDENTIFIER}" prefix suffix; then
+        return 0
+    fi
+
+    local -r version="$(version::extract "${IDENTIFIER}" version)" || return 1
+    local -r format="$(yaml::get "${CONFIG}" ".customer.${CUSTOMER}.version_format")" || return 1
+
+    IDENTIFIER="${format//\${VERSION\}/${version}}"
+}
+
+function __process_query_string() {
+    if [[ "${QUERY}" =~ ^([-\+])?([1-9]+)(-([1-9]+))?$ ]]; then
+        __process_range_query "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"  "${BASH_REMATCH[4]}"
+    elif [[ -n "${VALIDATE}" ]] || version::is_valid "${QUERY}"; then
+        __process_validate || return 1
+    else
+        validate_one_of "version" "${QUERY}" "${!QUERY_TYPE[@]}" || return 1
+    fi
+}
+
+function __query() {
+    local version=""
+
+    if [[ -n "${VALIDATE}" ]]; then
+        version=" and version=:version"
+    fi
+
+    echo "customerId=:customerId${version}"
+}
+
+function __where() {
+    local version=""
+
+    if [[ -n "${VALIDATE}" ]]; then
+        version=", ':version': {'S': '${IDENTIFIER}'}"
+    fi
+
+    echo "{':customerId': {'S': '${CUSTOMER}'}${version}}"
+}
+
+function __versions() {
+    dynamodb::query prod-customer-versions "$(__query)" "$(__where)" version [].version.S | version::sort
+}
+
+function __version_range() {
+    local out
+
+    if [[ -n "${RANGE_REVERSED}" ]]; then
+        out="$(__versions | tac)"
+    else
+        out="$(__versions)"
+    fi
+
+    out="$(echo "${out}" | sed -n "${RANGE}")"
+
+    if [[ -n "${RANGE_REVERSED}" ]]; then
+        echo "${out}" | tac
+    else
+        echo "${out}"
+    fi
+
+}
+
+function __handle_next() {
+    [[ "${NEXT}" == "true" ]] && NEXT=""
+
+    validate_required "version" "${VERSION}" || return 1
+    validate_output_len "${VERSION}" 1 "" "cannot increate a non-unique version" || return 1
+    version::increment "${VERSION}" "${NEXT}" || return 1
+}
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -v|--validate) VALIDATE="true" ; shift ;;
+    -f|--format) FORMAT="true" ; VALIDATE="true" ; shift ;;
+    -n|--next) NEXT="${2:-true}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -c|--customer) CUSTOMER="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    --config) CONFIG="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -h|--help) help && exit 0 ; shift ;;
+    *) QUERY="${1}" ; shift ;;
+  esac
+done
+
+
+validate_installed "granica-deploy" aws yq || exit 1
+validate_file "${CONFIG}" "--config" || exit 1
+
+__set_customer || exit 1
+__process_query_string || exit 1
+
+VERSION="$("${QUERY_TYPE[${QUERY}]}")" || exit 1
+
+if [[ -n "${NEXT}" ]]; then
+    __handle_next || exit 1
+elif [[ -n "${VALIDATE}" ]]; then
+    validate_required "version" "${IDENTIFIER}" || exit 1
+    [[ -n "${FORMAT}" ]] && echo "${IDENTIFIER}"
+    [[ -n "${VERSION}" ]] && exit 0 || exit 1
+else
+    echo "${VERSION}"
+fi
+

@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+export VALIDATE_USE_ULOGGER=""
+
+source "${BASH_TOOLS}/lib/args/check.sh"
+source "${BASH_TOOLS}/lib/args/validate.sh"
+source "${BASH_TOOLS}/lib/db/aws/dynamo.sh"
+source "${BASH_TOOLS}/lib/data.sh"
+source "${BASH_TOOLS}/lib/utils.sh"
+
+
+USAGE="granica-autoupdate [directive] [-v query|version] [-c customer] [--raw] [--config path] [--dry-run]"
+
+usage() {
+    echo "${USAGE}"
+}
+
+declare -A DIRECTIVES=(
+    [do-nothing]="do-nothing"
+    [install-rpm]="install-rpm"
+    [infra-apply]="infra-apply"
+    [software-apply]="software-apply"
+    [custom]="custom"
+)
+
+function __directives() {
+    join_by "|" "${!DIRECTIVES[@]}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Reads/writes infra autoupdate directives for the provided (or configured) customer and version.
+
+    If no directive is provided, reads the autoupdate directive for the current version (by default), or for the version provided/the version queried according to the value
+    provided via -v|--version.
+
+    If a directive is provided, updates the directive according to the same logic, i.e.: current by default, or for the version provided/the version queried according to the value
+    provided via -v|--version.
+
+    For information on workflows (-w|--workflow), see WORKFLOWS.
+    For information on directive aliases, see ALIASES.
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    DIRECTIVE           optional; valid directives: $(__directives); if specified, update the directive for the relevant customer/version; if omitted, read the directive
+
+OPTIONS
+
+    -v|--version        optional; defaults to the "current" version for the provided/configured customer; can be any version query supported by granica-version that maps
+                        to a unique version; can also be a specific version identifier (will be validated via "granica-version [version] -v")
+    -c|--customer       optional; defaults to "customer.default" in granica config file; the customer for which to update a version's directive
+    -w|--workflow       optional; if specified, updates the relevant version's directive based on the version's current directive and the workflow defined in config at
+                        "directive.workflow.[workflow]";
+    --raw               optional; used w/ reads; if specified, print only the queried directive to stdout; if omitted, stdout ouput will be in the form "[version] -> [directive]"
+    --config            optional; defaults to "\${XDG_CONFIG_HOME}/granica/config.toml"; a path to the config file to use
+    --dry-run           optional; if provided, no state changes are made
+    -h, --help          optional; display this message
+
+WORKFLOWS
+
+    If -w|--workflow is used, updates the directive according to the workflow defined in config block "directive.workflow.[-w|--workflow]". Workflows are specified as a map of
+    existing states to the next state in the workflow. For example, assume the current state of "do-nothing" and the following workflow:
+
+        [directive.workflow.install]
+        "do-nothing" = "install-rpm"
+        "install-rpm" = "do-nothing"
+
+    Calling "granica autoupdate --workflow install" will result in the update of the relevant version's directive to "install-rpm". Issuing that same command again will likewise
+    update the same version's state to "do-nothing".
+
+
+ALIASES
+
+    Directives can be aliased by adding a block of following form to the granica config file:
+
+        [alias.directive]
+        alias_name = "[directive-name]"
+
+    More concretely:
+
+        [alias.directive]
+        install = "install-rpm"
+help
+}
+
+
+DIRECTIVE=""
+VERSION=""
+CUSTOMER=""
+WORKFLOW=""
+RAW=""
+CONFIG="${XDG_CONFIG_HOME}/granica/config.toml"
+DRY_RUN=""
+
+function __set_customer() {
+    if [[ -z "${CUSTOMER}" ]]; then
+        CUSTOMER="$(yaml::get "${CONFIG}" .customer.default)" || return 1
+    fi
+
+    validate_required "-c|--customer" "${CUSTOMER}" || return 1
+}
+
+function __set_version() {
+    if [[ -n "${VERSION}" ]] && OUT="$(granica-version "${VERSION}" -v -f)"; then
+        VERSION="${OUT}"
+        return 0
+    fi
+
+    local cmd=("granica-version")
+    [[ -n "${VERSION}" ]] && cmd+=("${VERSION}")
+    [[ -n "${CUSTOMER}" ]] && cmd+=("-c" "${CUSTOMER}")
+
+    if ! OUT="$("${cmd[@]}")" && [[ -n "${VERSION}" ]]; then
+        echo "[ERROR] '${VERSION}' is not a valid version for customer='${CUSTOMER}'"
+        return 1
+    fi
+
+    validate_required "-v|--version" "${OUT}" || return 1
+    validate_output_len "${OUT}" 1 "" "'${VERSION}' does not map to a unique version" || return 1
+
+    VERSION="${OUT}"
+}
+
+function __set_directive() {
+    if [[ -n "${DIRECTIVE}" ]] && is_one_of "${DIRECTIVE}" "${!DIRECTIVES[@]}"; then
+        DIRECTIVE="${DIRECTIVES[${DIRECTIVE}]}"
+        return 0
+    elif [[ -z "${DIRECTIVE}" ]]; then
+        return 0
+    fi
+
+    local -r alias="$(yaml::get "${CONFIG}" ".alias.directive.${DIRECTIVE}")"
+    validate_one_of_optional "directive" "${alias}" "${!DIRECTIVES[@]}" || return 1
+    DIRECTIVE="${DIRECTIVES[${alias}]}"
+}
+
+function __query() {
+    echo "customerId=:customerId and version=:version"
+}
+
+function __where() {
+    echo "{':customerId': {'S': '${CUSTOMER}'}, ':version': {'S': '${VERSION}'}}"
+}
+
+function __read_directive() {
+    dynamodb::query prod-customer-versions "$(__query)"  "$(__where)" infra_auto_update_directive "[].infra_auto_update_directive.S" || return 1
+}
+
+function __key() {
+    echo "{'customerId': {'S': '${CUSTOMER}'}, 'version': {'S': '${VERSION}'}}"
+}
+
+function __update() {
+    echo "{'infra_auto_update_directive': {'Value': {'S': '${DIRECTIVE}'}}}"
+}
+
+function __update_directive() {
+    dynamodb::update "prod-customer-versions" "$(__key)" "$(__update)" "${DRY_RUN}" || return 1
+}
+
+function __show_directive() {
+    local raw="${1:-${RAW}}"
+    local -r directive="$(__read_directive)" || return 1
+
+    [[ -z "${raw}" ]] && echo -n "${VERSION} -> "
+    echo "${directive}"
+}
+
+function __handle_workflow() {
+    local -r current="$(__show_directive true)"
+    local -r next="$(yaml::get "${CONFIG}" ".directive.workflow.${WORKFLOW}.${current}")"
+
+    if [[ -z "${next}" ]]; then
+        echo "[ERROR] no step found for directive='${current}' in workflow=${WORKFLOW}"
+        return 1
+    fi
+
+    DIRECTIVE="${next}"
+    __update_directive
+}
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -v|--version) VERSION="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -c|--customer) CUSTOMER="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -w|--workflow) WORKFLOW="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    --raw) RAW="true" ; shift ;;
+    --config) CONFIG="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    --dry-run) DRY_RUN="true" ; shift ;;
+    -h|--help) help && exit 0 ; shift ;;
+    -*) echo -n "error: " && usage && exit 1 ;;
+    *) DIRECTIVE="${1}" ; shift ;;
+  esac
+done
+
+
+validate_installed "granica-autoupdate" aws granica-version yq || exit 1
+validate_file "${CONFIG}" "--config" || exit 1
+
+__set_customer || exit 1
+__set_version || exit 1
+__set_directive || exit 1
+
+if [[ -n "${WORKFLOW}" ]]; then
+    __handle_workflow || exit 1
+elif [[ -z "${DIRECTIVE}" ]]; then
+    __show_directive || exit 1
+else
+    __update_directive || exit 1
+fi
+
