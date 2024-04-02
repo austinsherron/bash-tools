@@ -3,15 +3,14 @@
 set -Eeuo pipefail
 
 source "${BASH_TOOLS}/lib/args/check.sh"
-source "${BASH_TOOLS}/lib/args/parse.sh"
+source "${BASH_TOOLS}/lib/args/validate.sh"
+source "${BASH_TOOLS}/lib/data.sh"
 
 
 declare -A CMDS=(
-    [ssh]="   ssh into a granica admin server"
-)
-
-declare -A CMD_ACTIONS=(
-    [ssh]="__handle_ssh"
+    [autoupdate]="  read/write infra autoupdate directives"
+    [ssh]="         ssh into a granica admin server"
+    [version]="     query customer version information"
 )
 
 function __cmds() {
@@ -44,22 +43,53 @@ $(__cmd_descriptions)
 USAGE
 
     ${USAGE}
+
+ALIASES
+
+    Commands can be aliased by adding a block of following form to the granica config file:
+
+        [alias.command]
+        alias_name = "[command-name]"
+
+    More concretely:
+
+        [alias.command]
+        au = "autoupdate"
+        v = "version"
 help
 }
 
-CMD="write"
+ARGS=("$@")
+CMD=""
+HELP=""
+CONFIG="${XDG_CONFIG_HOME}/granica/config.toml"
 
-function __handle_ssh() { granica-ssh "$@" ; }
+function __validate_cmd() {
+    if is_one_of "${CMD}" "${!CMDS[@]}"; then
+        return 0
+    fi
 
-FIRST="${1:-x}"
+    local -r alias="$(yaml::get "${CONFIG}" ".alias.command.${CMD}")"
+    validate_one_of "cmd" "${alias}" "${!CMDS[@]}" || return 1
+    CMD="${alias}"
+}
 
-if is_help_flag "${FIRST}"; then
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --config) CONFIG="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -h|--help) HELP="true" ; shift ;;
+    *) [[ -z "${CMD}" ]] && CMD="${1}" ; shift ;;
+  esac
+done
+
+
+if [[ -n "${HELP}" ]] && [[ -z "${CMD}" ]]; then
     help && exit 0
 fi
 
-if is_one_of "${FIRST}" "${!CMD_ACTIONS[@]}"; then
-    CMD="${FIRST}" ; shift
-fi
+validate_file "${CONFIG}" "--config" || exit 1
+__validate_cmd || exit 1
 
-"${CMD_ACTIONS[${CMD}]}" "$@"
+ARGS=("${ARGS[@]:1}")
+"granica-${CMD}" "${ARGS[@]}"
 
