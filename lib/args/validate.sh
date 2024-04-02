@@ -178,6 +178,18 @@ function validate_one_of_optional() {
     fi
 }
 
+#######################################
+# Validates the (line) length of the provided string. Useful when a sub-command is expected to return "n" lines.
+# Arguments:
+#   lines: the string to validate
+#   len: the required line length of lines
+#   desc: optional, defaults to lines; a description of the variable being validated (for use in error messages)
+#   msg: optional; the error message to use
+# Outputs:
+#   Prints error message to stdout depending on the current log level (see: ulogger -h)
+# Returns:
+#   0 if the number of lines in the provided value == len, 1 otherwise
+#######################################
 function validate_output_len() {
     local lines="${1}"
     local len="${2}"
