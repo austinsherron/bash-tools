@@ -54,8 +54,8 @@ function __install_os_specific() {
 }
 
 # NOTE: order matters here
-__deploy_ulogger
 __install_bash_lib
+__deploy_ulogger
 __deploy_deployer
 __deploy_common
 __install_os_specific

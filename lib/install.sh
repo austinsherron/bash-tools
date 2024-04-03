@@ -11,11 +11,8 @@ fi
 LIB_SRC="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 || true ; pwd -P)/src"
 LIB_DST="${LOCAL_LIB}/bash"
 
-echo "SRC=${LIB_SRC}"
-echo "DST=${LIB_DST}"
-
 if [[ ! -d "${LIB_DST}" ]]; then
-    echo "[INFO] installing bash lib to ${LIB_DST}"
+    echo "[INFO] installing bash lib at ${LIB_SRC} to ${LIB_DST}"
     sudo ln -s "${LIB_SRC}" "${LIB_DST}" || exit 1
 else
     echo "[INFO] bash lib already exists at ${LIB_DST}"
