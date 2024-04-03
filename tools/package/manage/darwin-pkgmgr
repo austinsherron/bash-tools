@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 source /etc/profile.d/shared_paths.sh
-source "${BASH_TOOLS}/lib/utils.sh"
+source "${LOCAL_LIB}/bash/utils.sh"
 
 
 USAGE="pkgmgr cmd [-p pkg [-c]|-t] [-f] [-s script {--script-arg [arg]}] {brew-args}"

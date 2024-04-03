@@ -2,7 +2,7 @@
 # shellcheck disable=SC1102
 
 source /etc/profile.d/shared_paths.sh
-source "${BASH_TOOLS}/lib/args/check.sh"
+source "${LOCAL_LIB}/bash/args/check.sh"
 
 
 [[ -z "${VALIDATE_USE_ULOGGER+x}" ]] && VALIDATE_USE_ULOGGER="true"
@@ -10,7 +10,7 @@ source "${BASH_TOOLS}/lib/args/check.sh"
 __log_error() {
     local msg="${1}"
 
-    if [[ -z "${VALIDATE_USE_ULOGGER}" ]]; then
+    if [[ -z "${VALIDATE_USE_ULOGGER}" ]] || ! check_installed ulogger; then
         echo "[ERROR] ${msg}"
     else
         ulogger error "${msg}"

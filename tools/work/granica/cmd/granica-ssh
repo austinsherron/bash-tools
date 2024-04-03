@@ -2,8 +2,8 @@
 
 set -Eeuo pipefail
 
-source "${BASH_TOOLS}/lib/args/check.sh"
-source "${BASH_TOOLS}/lib/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
+source "${LOCAL_LIB}/bash/args/check.sh"
+source "${LOCAL_LIB}/bash/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
 
 
 USAGE="granica-ssh [-e env]|[-s admin-server -p project [-z zone]] [-c config]"

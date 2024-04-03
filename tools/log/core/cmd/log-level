@@ -2,10 +2,10 @@
 
 set -Eeuo pipefail
 
-source "${BASH_TOOLS}/lib/args/check.sh"
-source "${BASH_TOOLS}/lib/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
-source "${BASH_TOOLS}/lib/num.sh"
-source "${BASH_TOOLS}/lib/utils.sh"
+source "${LOCAL_LIB}/bash/args/check.sh"
+source "${LOCAL_LIB}/bash/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
+source "${LOCAL_LIB}/bash/num.sh"
+source "${LOCAL_LIB}/bash/utils.sh"
 
 
 USAGE="log-level LOG_LEVEL [-v] [-t type] [-c path]"

@@ -3,7 +3,7 @@
 
 set -Eeuo pipefail
 
-source "${BASH_TOOLS}/lib/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
+source "${LOCAL_LIB}/bash/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
 
 
 USAGE="log-env [[[-r var] -v] [-s var] [-c var] [-f]]|[vol [-q{q}]|[-v{v}]|[--verbose]]"

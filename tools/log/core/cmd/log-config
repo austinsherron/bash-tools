@@ -2,8 +2,8 @@
 
 set -Eeuo pipefail
 
-source "${BASH_TOOLS}/lib/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
-source "${BASH_TOOLS}/lib/utils.sh"
+source "${LOCAL_LIB}/bash/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
+source "${LOCAL_LIB}/bash/utils.sh"
 
 
 # TODO: create a config schema and a fully defined example config.
