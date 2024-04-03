@@ -2,7 +2,7 @@
 # shellcheck disable=SC1102
 
 source /etc/profile.d/shared_paths.sh
-source "${BASH_TOOLS}/lib/args/check.sh"
+source "${LOCAL_LIB}/bash/args/check.sh"
 
 
 [[ -z "${VALIDATE_USE_ULOGGER+x}" ]] && VALIDATE_USE_ULOGGER="true"

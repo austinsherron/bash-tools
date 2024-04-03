@@ -4,10 +4,10 @@ set -Eeuo pipefail
 
 export VALIDATE_USE_ULOGGER=""
 
-source "${BASH_TOOLS}/lib/args/validate.sh"
-source "${BASH_TOOLS}/lib/data.sh"
-source "${BASH_TOOLS}/lib/db/aws/dynamo.sh"
-source "${BASH_TOOLS}/lib/version.sh"
+source "${LOCAL_LIB}/bash/args/validate.sh"
+source "${LOCAL_LIB}/bash/data.sh"
+source "${LOCAL_LIB}/bash/db/aws/dynamo.sh"
+source "${LOCAL_LIB}/bash/version.sh"
 
 
 USAGE="granica-version [query/version] [-v] [-f] [-n] [-c customer] [---config path]"

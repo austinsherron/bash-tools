@@ -7,8 +7,8 @@ if [[ -n "$(log-env -r disabled -v)" ]] || [[ -n "$(log-config -f disabled)" ]];
     exit 0
 fi
 
-source "${BASH_TOOLS}/lib/args/check.sh"
-source "${BASH_TOOLS}/lib/args/parse.sh"
+source "${LOCAL_LIB}/bash/args/check.sh"
+source "${LOCAL_LIB}/bash/args/parse.sh"
 
 
 declare -A CMDS=(
