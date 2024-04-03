@@ -3,6 +3,8 @@
 set -Eeuo pipefail
 
 
+# NOTE: these are defined in /etc/profile.d/shared_paths.sh, but depending on when this is
+# called, that script may not exists yet
 [[ -z "${LOCAL_BIN+x}" ]] && export LOCAL_BIN="/usr/local/bin"
 [[ -z "${LOCAL_LIB+x}" ]] && export LOCAL_LIB="/usr/local/lib"
 
@@ -51,6 +53,7 @@ function __install_os_specific() {
     "${TOOLS_ROOT}/install/${OS_TYPE}/main.sh"
 }
 
+# NOTE: order matters here
 __deploy_ulogger
 __install_bash_lib
 __deploy_deployer
