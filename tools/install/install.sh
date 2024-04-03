@@ -45,7 +45,6 @@ function __deploy_common() {
 }
 
 function __install_os_specific() {
-    # TODO: replace w/ os-type function after bash repo consolidation
     OS_TYPE="$(os-type)"
     export OS_TYPE
 
