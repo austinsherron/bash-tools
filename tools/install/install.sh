@@ -3,12 +3,15 @@
 set -Eeuo pipefail
 
 
+[[ -z "${LOCAL_BIN+x}" ]] && export LOCAL_BIN="/usr/local/bin"
+[[ -z "${LOCAL_LIB+x}" ]] && export LOCAL_LIB="/usr/local/lib"
+
 INSTALL_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 || true ; pwd -P)"
 TOOLS_ROOT="$(dirname "${INSTALL_DIR}")"
 BASH_TOOLS="$(dirname "$(dirname "${INSTALL_DIR}")")"
 ULOG_ROOT="${TOOLS_ROOT}/log"
 
-source "${BASH_TOOLS}/lib/utils.sh"
+source "${BASH_TOOLS}/lib/src/utils.sh"
 
 export INSTALL_DIR
 export TOOLS_ROOT
@@ -19,6 +22,10 @@ function __deploy_ulogger() {
     "${ULOG_ROOT}/install.sh"
     export ULOGGER_TYPE="install"
     export ULOGGER_PREFIX="tools"
+}
+
+function __install_bash_lib() {
+    "${BASH_TOOLS}/lib/install.sh"
 }
 
 function __deploy_deployer() {
@@ -46,6 +53,7 @@ function __install_os_specific() {
 }
 
 __deploy_ulogger
+__install_bash_lib
 __deploy_deployer
 __deploy_common
 __install_os_specific
