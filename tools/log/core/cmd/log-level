@@ -2,9 +2,10 @@
 
 set -Eeuo pipefail
 
+export VALIDATE_USE_ULOGGER=""
 source "${LOCAL_LIB}/bash/args/check.sh"
-source "${LOCAL_LIB}/bash/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
-source "${LOCAL_LIB}/bash/num.sh"
+source "${LOCAL_LIB}/bash/args/validate.sh"
+source "${LOCAL_LIB}/bash/core/num.sh"
 source "${LOCAL_LIB}/bash/utils.sh"
 
 

@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+
+usage() {
+    echo "usage: git merge-repo [<options>] <repository>"
+}
+
+help() {
+cat <<help
+GIT-MERGE-REPO(1)
+
+NAME
+
+    git merge-repo - Merge an existing repo into the current repo.
+
+SYNOPSIS
+
+    git merge-repo [-r|--repo <new-repo-name>] [-b|--branch <merge-branch>]
+                [--keep-remote] [--dry-run] [-v|--verbose] <repository>
+
+DESCRIPTION
+
+    Merges the repository at the provided path into the current repository.
+
+OPTIONS
+
+    -r, --repo          optional, defaults to the basename of repository; the name to use to add repo's remote to the destination repo
+    -b, --branch        optional, defaults to "master", or the "TRUNK" env var, if set; the branch to merge
+    --keep-remote       optional; if present, don't remove the source repo's remote from the destination repo
+    --dry-run           optional; if present, no state changes are made
+    -v, --verbose       optional; if present, the script will print to stdout messages about the script's progress
+    -h, --help          optional; display this message
+help
+}
+
+
+SRC_REPO=""
+SRC_PATH=""
+DST_REPO=""
+DST_PATH=""
+BRANCH="$([[ -n "${TRUNK+x}" ]] && echo "${TRUNK}" || echo "master")"
+KEEP_REMOTE=""
+DRY_RUN=""
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="git"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="repo"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -r|--repo) SRC_REPO="${2}" ; shift ; shift ;;
+    -b|--branch) BRANCH="${2}" ; shift ; shift ;;
+    --keep-remote) KEEP_REMOTE="true" ; shift ;;
+    --dry-run) DRY_RUN="true" ; shift ;;
+    -v|--verbose) export ULOGGER_VERBOSE="true" ; shift ;;
+    -h|--help) help ; exit 0 ;;
+    -*) usage ; exit 1 ;;
+    *) SRC_PATH="${1}" ; shift ;;
+  esac
+done
+
+function symlink() {
+    if [[ "$#" -lt 2 ]]; then
+        ulogger error "symlink: two paths are required" -t shell -p util
+        return 1
+    fi
+
+    ln -s "$(realpath "${1}")" "$(realpath "${2}")"
+}
+
+function symlinks() {
+    local path="" ; local broken="" ; local valid="" ; local clean=""
+
+    while [[ $# -gt 0 ]]; do
+        case "${1}" in
+            -b) broken="true" ; shift ;;
+            -v) valid="true" ; shift ;;
+            -c) clean="true" ; shift ;;
+            *) path="${1}" ; shift ;;
+        esac
+    done
+
+    validate_required_positional "path" "${path}"
+    validate_mutually_exclusive "${broken}" "-b" "${valid}" "-v"
+
+    find "${path}" -type l | while read -r file; do
+        if [[ -e "${file}" ]] && [[ -n "${broken}" ]]; then
+            continue
+        fi
+
+        if [[ ! -e "${file}" ]] && [[ -z "${broken}" ]]; then
+            continue
+        fi
+
+        [[ -n "${clean}" ]] && echo -n "cleaning "
+        echo "${file} -> $(realpath "${file}")"
+        [[ -n "${clean}" ]] && echo "unlink ${file}"
+    done
+}
