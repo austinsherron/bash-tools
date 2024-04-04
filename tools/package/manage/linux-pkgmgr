@@ -126,7 +126,7 @@ __apt_cmd() {
     local cmd="${APT[${CMD}]}"
     local -r full_cmd="$(echo "sudo apt ${cmd} ${PKG} ${ARGS[*]}" | xargs)"
 
-    ulogger info "running '${full_cmd}'"
+    ulogger debug "running '${full_cmd}'"
     [[ -z "${DRY_RUN}" ]] && sudo apt update "${CONFIRM}" && $full_cmd
 }
 
@@ -135,7 +135,7 @@ __flatpak_cmd() {
     local -r full_cmd="$(echo "sudo flatpak ${cmd} ${PKG} ${ARGS[*]}" | xargs)"
 
     [[ "${PKG}" == *"."* ]] && [[ "${cmd}" == "install" ]] && PKG="flathub ${PKG}"
-    ulogger info "running '${full_cmd}'"
+    ulogger debug "running '${full_cmd}'"
     [[ -z "${DRY_RUN}" ]] && $full_cmd
 }
 
@@ -143,7 +143,7 @@ __snap_cmd() {
     local cmd="${SNAP[${CMD}]}"
     local -r full_cmd="$(echo "sudo snap ${cmd} ${PKG} ${ARGS[*]}" | xargs)"
 
-    ulogger info "running '${full_cmd}'"
+    ulogger debug "running '${full_cmd}'"
     [[ -z "${DRY_RUN}" ]] && $full_cmd
 }
 
@@ -154,13 +154,13 @@ __run_script() {
     script_path="${SCRIPTS_ROOT}/install/$(os-type)/${PKG}.sh"
 
     if [[ ! -f "${script_path}" ]]; then
-        ulogger info "script=${script_path} doesn't exist; falling back to os-agnostic path"
+        ulogger debug "script=${script_path} doesn't exist; falling back to os-agnostic path"
         script_path="${SCRIPTS_ROOT}/install/generic/${PKG}.sh"
         [[ ! -f "${script_path}" ]] && ulogger error "os-agnostic script=${script_path} doesn't exist" && return 1
     fi
 
     local -r full_cmd="$(echo "${script_path} ${ARGS[*]}" | xargs)"
-    ulogger info "running '${full_cmd}'"
+    ulogger debug "running '${full_cmd}'"
     [[ -z "${DRY_RUN}" ]] && $full_cmd
 }
 
@@ -196,7 +196,7 @@ fi
 read -r -a PKG_ARR <<< "${PKG}"
 
 if [[ "${#PKG_ARR[@]}" -eq 0 ]]; then
-    ulogger info "-p|--pkg is required"
+    ulogger error "-p|--pkg is required"
     exit 1
 fi
 
@@ -213,9 +213,9 @@ ARGS+=("${PKG_ARR[@]:1}")
 if [[ $RC -eq 2 ]]; then
     exit 1
 elif [[ $RC -eq 0 ]] && [[ "${CMD}" == "install" ]]; then
-    ulogger info "${PKG} is already installed"
+    ulogger debug "${PKG} is already installed"
     [[ -z "${FORCE}" ]] && exit 0
-    ulogger info "-f|--force option detected; forcing install"
+    ulogger warn "-f|--force option detected; forcing install"
 elif [[ $RC -eq 1 ]] && [[ "${CMD}" != "install" ]]; then
     ulogger error "cannot ${CMD} package that isn't installed"
     exit 1

@@ -147,7 +147,7 @@ __check_pkg() {
     local is_cask
     is_cask="$([[ -z "${CASK}" ]] && echo "no" || echo "yes")"
 
-    ulogger info "checking brew for pkg=${PKG} (cask? ${is_cask})"
+    ulogger debug "checking brew for pkg=${PKG} (cask? ${is_cask})"
     brew list "${PKG}" ${CASK} &> /dev/null && return 0 || return 1
 }
 
@@ -155,7 +155,7 @@ __process_cmd() {
     local cmd="${CMDS[${CMD}]}"
     local -r full_cmd="$(echo "brew ${cmd} ${PKG} ${CASK} ${ARGS[*]}" | xargs)"
 
-    ulogger info "running '${full_cmd}'"
+    ulogger debug "running '${full_cmd}'"
     [[ "${DRY_RUN}" == "true" ]] && return 0
 
     $full_cmd || return 1
@@ -166,12 +166,12 @@ __run_script() {
     script_path="${SCRIPTS_ROOT}/install/$(os-type)/${SCRIPT}.sh"
 
     if [[ ! -f "${script_path}" ]]; then
-        ulogger info "script=${script_path} doesn't exist; falling back to os-agnostic path"
+        ulogger debug "script=${script_path} doesn't exist; falling back to os-agnostic path"
         script_path="${SCRIPTS_ROOT}/install/generic/${SCRIPT}.sh"
         [[ ! -f "${script_path}" ]] && ulogger error "os-agnostic script=${script_path} doesn't exist" && return 1
     fi
 
-    ulogger info "running script=${script_path} w/ args=${ARGS[*]}"
+    ulogger debug "running script=${script_path} w/ args=${ARGS[*]}"
     [[ -z "${DRY_RUN}" ]] && return 0
 
     "${script_path}" "${ARGS[@]}" || return 1
@@ -211,9 +211,9 @@ __check_pkg && INSTALLED=0 || INSTALLED=1
 [[ "${CMD}" == "check" ]] && exit "${INSTALLED}"
 
 if [[ ${INSTALLED} -eq 0 ]] && [[ "${CMD}" == "install" ]]; then
-    ulogger info "${PKG} is already installed"
+    ulogger debug "${PKG} is already installed"
     [[ -z "${FORCE}" ]] && exit 0
-    ulogger info "-f|--force option detected; forcing install"
+    ulogger warn "-f|--force option detected; forcing install"
 elif [[ ${INSTALLED} -eq 1 ]] && [[ -n "${INSTALLED_CMDS["${CMD}"]+x}" ]]; then
     ulogger error "${CMD} cmd not valid for package that isn't installed"
     exit 1
