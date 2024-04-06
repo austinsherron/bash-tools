@@ -2,8 +2,10 @@
 
 set -Eeuo pipefail
 
-source "${LOCAL_LIB}/bash/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
+export VALIDATE_USE_ULOGGER=""
+source "${LOCAL_LIB}/bash/args/validate.sh"
 source "${LOCAL_LIB}/bash/utils.sh"
+source "${LOCAL_LIB}/bash/utils/env.sh"
 
 
 # TODO: create a config schema and a fully defined example config.
@@ -35,7 +37,7 @@ declare -A FIELD_ACTIONS=(
 
 function __fields() {
     local sep="${1:-|}"
-    echo "${!FIELDS[@]}" | tr " " "${sep}"
+    join_by "${sep}" "${!FIELDS[@]}"
 }
 
 function __field_descriptions() {
@@ -48,10 +50,10 @@ function __query_types() {
     echo "${!QUERY_TYPES[@]}" | tr " " "|"
 }
 
-USAGE="log-config [-f field] [-q $(__query_types)] [-t type] [-c path]"
+USAGE="log-config [-f field] [-q $(__query_types)] [-t type] [-c path] [-e]"
 
 usage() {
-    echo "${USAGE}"
+    echo "usage: ${USAGE}"
 }
 
 help() {
@@ -81,6 +83,7 @@ OPTIONS
     -q, --query     optional, required if -f|--field isn't specified; writes to stdout the config block of the provided type; valid values: $(__query_types ", ")
     -t, --type      optional; the logger type for which config is being read; can also be specified via $\ULOGGER_TYPE
     -c, --config    optional; a path to a file from which to read user ulogger config
+    -e, --edit      optional; if provided, opens the ulogger config file in an editor (configured via \$EDITOR)
     -h, --help      optional; display this message
 help
 }
@@ -273,7 +276,7 @@ function __get_disabled_from_config() {
 
     disabled="$(__get_from_config .disabled)"
     [[ -z "${disabled}" ]] && disabled="$(__get_from_config ".${TYPE}.disabled")"
-    [[ -z "${disabled}" ]] && disabled="$(get_env  "ULOGGER_DISABLED")"
+    [[ -z "${disabled}" ]] && disabled="$(env::get "ULOGGER_DISABLED")"
 
     echo "${disabled}"
 }

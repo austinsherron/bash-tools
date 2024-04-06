@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1102
 
-source /etc/profile.d/shared_paths.sh
 source "${LOCAL_LIB}/bash/args/check.sh"
+source "${LOCAL_LIB}/bash/utils/env.sh"
 
 
-[[ -z "${VALIDATE_USE_ULOGGER+x}" ]] && VALIDATE_USE_ULOGGER="true"
+env::default "VALIDATE_USE_ULOGGER" "true"
 
 __log_error() {
     local msg="${1}"
 
-    if [[ -z "${VALIDATE_USE_ULOGGER}" ]] || ! check_installed ulogger; then
+    if env::is_empty "VALIDATE_USE_ULOGGER" || ! check_installed ulogger; then
         echo "[ERROR] ${msg}"
     else
         ulogger error "${msg}"
@@ -34,10 +34,17 @@ function validate_required() {
 
     [[ -z "${msg}" ]] && msg="${name} is a required param"
 
-    if [[ -z "${val}" ]]; then
-        __log_error "${msg}"
-        return 1
+    if [[ -n "${val}" ]]; then
+        return 0
     fi
+
+    if [[ "$(type -t usage)" ]]; then
+        echo "error: $(usage)"
+    else
+        __log_error "${msg}"
+    fi
+
+    return 1
 }
 
 #######################################
@@ -389,6 +396,26 @@ function validate_dir() {
 
     if [[ ! -d "${path}" ]]; then
         __log_error "${name} must refer to a valid directory"
+        return 1
+    fi
+}
+
+#######################################
+# Validates that a path references a valid path (file or directory).
+# Arguments:
+#   path: the path to validate
+#   name: the name of the variable to validate
+# Outputs:
+#   Prints error message to stdout depending on the current log level (see: ulogger -h)
+# Returns:
+#   0 if the provided path references a valid path, 1 otherwise
+#######################################
+function validate_path() {
+    local path="${1}"
+    local name="${2:-${path}}"
+
+    if [[ ! -f "${path}" ]] && [[ ! -d "${path}" ]]; then
+        __log_error "${name} must refer to a valid path"
         return 1
     fi
 }
