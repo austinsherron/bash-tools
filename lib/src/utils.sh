@@ -4,6 +4,11 @@ source /etc/profile.d/shared_paths.sh
 source "${LOCAL_LIB}/bash/args/validate.sh"
 
 
+export CONFIRM_RC_YES=0
+export CONFIRM_RC_YES_ALL=1
+export CONFIRM_RC_NO=2
+export CONFIRM_RC_NO_ALL=3
+
 #######################################
 # Joins arguments 2-n by first argument.
 # Source: https://stackoverflow.com/questions/1527049/how-can-i-join-elements-of-a-bash-array-into-a-delimited-string
@@ -114,15 +119,25 @@ function endswith() {
 # Arguments:
 #   prompt: optional, defaults to "Are you sure?"; the prompt string
 # Returns:
-#   0 if the user selects "y" (yes), 1 otherwise
+#   0 if the user selects "y" (yes)
+#   1 if the user selects "Y" (yes to all)
+#   2 if the user selects "n" (no)
+#   3 if the user selects "N" (no to all)
 #######################################
 function yes_or_no() {
     local prompt="${1:-Are you sure?}"
-    local full_prompt="${prompt} [y/N] "
+    local full_prompt="${prompt} [y/n/Y/N] "
 
     read -p "${full_prompt}" -n 1 -r
+    local rc=1
 
-    [[ $REPLY =~ ^[y]$ ]] && return 0 || return 1
+    [[ $REPLY =~ ^[y]$ ]] && rc=$CONFIRM_RC_YES
+    [[ $REPLY =~ ^[Y]$ ]] && rc=$CONFIRM_RC_YES_ALL
+    [[ $REPLY =~ ^[n]$ ]] && rc=$CONFIRM_RC_NO
+    [[ $REPLY =~ ^[N]$ ]] && rc=$CONFIRM_RC_NO_ALL
+
+    echo
+    return $rc
 }
 
 #######################################
@@ -165,43 +180,5 @@ function fn_exists() {
 
     local fn_name="${1}"
     [[ $(type -t "${fn_name}") == function ]] && return 0 || return 1
-}
-
-
-#######################################
-# Checks if the environment variable w/ the provided name exists.
-# Arguments:
-#   var: the name of the environment variable to reads
-# Returns:
-#   0 if if the variable exists
-#   1 if if the variable doesn't exist
-#   2 if function arguments aren't valid
-#######################################
-function var_exists() {
-    validate_num_args 1 $# "var_exists" || return 2
-
-    local var="${1}"
-    [[ -n "${!var+x}" ]] || return 1
-
-    return 0
-}
-
-#######################################
-# Reads the environment variable w/ the provided name, if it exists.
-# Arguments:
-#   var: the name of the environment variable to reads
-# Outputs:
-#   Writes the value associated w/ the provided env var to stdout, if it exists
-# Returns:
-#   0 if successful and if function arguments are valid
-#   2 if function arguments aren't valid
-#######################################
-function get_env() {
-    validate_num_args 1 $# "get_env" || return 2
-
-    local var="${1}"
-    [[ -n "${!var+x}" ]] && echo "${!var}"
-
-    return 0
 }
 
