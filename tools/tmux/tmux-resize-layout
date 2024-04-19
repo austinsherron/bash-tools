@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 source /etc/profile.d/shared_paths.sh
+source "${LOCAL_LIB}/bash/log/utils.sh"
 source "${LOCAL_LIB}/bash/utils.sh"
 
 
@@ -113,7 +114,7 @@ __extract_layout_from_env() {
     echo "${env_val}" | cut -d "=" -f2
 }
 
-eval "$(log-env vol "$@")"
+LogFlags::process_log_flags "$@"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -144,7 +145,8 @@ while [[ $# -gt 0 ]]; do
       help
       exit 0
       ;;
-    -v*|-q*) shift ;;
+    -v*|-q*)
+      shift ;;
     *)
       usage
       exit 1

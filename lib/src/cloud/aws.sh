@@ -24,7 +24,7 @@ export AWS_QUOTA_EC2_GPU="L-DB2E81BA"
 
 # maps quotas to their services
 declare -A SVC_BY_QUOTA=(
-    ["${AWS_EC2_GPU_QUOTA}"]="${AWS_EC2_SVC}"
+    ["${AWS_QUOTA_EC2_GPU}"]="${AWS_SVC_EC2}"
 )
 
 ### config related utils

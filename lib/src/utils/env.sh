@@ -22,6 +22,19 @@ function env::exists() {
 }
 
 #######################################
+# Checks if the provided function exists.
+# Arguments:
+#   fn_name: name of the function to check
+# Returns:
+#   0 if the function exists, 1 otherwise
+#   2 if function arguments aren't valid
+#######################################
+function env::fn_exists() {
+    local fn_name="${1}"
+    [[ $(type -t "${fn_name}") == function ]] && return 0 || return 1
+}
+
+#######################################
 # Checks if the environment variable w/ the provided name is empty.
 # WARN: the variable is assumed to exist.
 # Arguments:
@@ -54,6 +67,22 @@ function env::is_empty() {
 function env::exists_not_empty() {
     local var="${1}"
     env::exists "${var}" && ! env::is_empty "${var}"
+}
+
+#######################################
+# Alias for env::exists_not_empty.
+#######################################
+function env::truthy() {
+    local var="${1}"
+    env::exists_not_empty "${var}"
+}
+
+#######################################
+# Alias for ! env::exists_not_empty.
+#######################################
+function env::falsy() {
+    local var="${1}"
+    ! env::exists_not_empty "${var}"
 }
 
 #######################################
