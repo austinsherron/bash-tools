@@ -6,6 +6,7 @@ export VALIDATE_USE_ULOGGER=""
 source "${LOCAL_LIB}/bash/args/check.sh"
 source "${LOCAL_LIB}/bash/args/validate.sh"
 source "${LOCAL_LIB}/bash/core/num.sh"
+source "${LOCAL_LIB}/bash/log/level.sh"
 source "${LOCAL_LIB}/bash/utils.sh"
 
 
@@ -73,52 +74,12 @@ help
 }
 
 
-declare -A SEVERITIES=([0]=TRACE [1]=DEBUG [2]=INFO [3]=WARN [4]=ERROR [5]=OFF)
-declare -A LOG_LEVELS=([TRACE]=0 [DEBUG]=1 [INFO]=2 [WARN]=3 [ERROR]=4 [OFF]=5)
-declare -A PUBLIC_LOG_LEVELS=([TRACE]=0 [DEBUG]=1 [INFO]=2 [WARN]=3 [ERROR]=4)
-
 LOG_LEVEL=""
 VALIDATE=""
-XFM=""
+CONVERT=""
 CONFIG_PATH=""
+XFM=""
 ERROR_RC=2
-
-function __to_severity() {
-    local -r level="$(to_upper "${1}")"
-    is_one_of "${level}" "${!PUBLIC_LOG_LEVELS[@]}" || return 1
-
-    local severity="${PUBLIC_LOG_LEVELS[${level}]}"
-
-    [[ -z "${severity}" ]] && return 1
-    echo "${severity}"
-}
-
-function __to_level() {
-    local severity="${1}"
-    is_one_of "${severity}" "${!SEVERITIES[@]}" || return 1
-
-    local level="${SEVERITIES[${severity}]}"
-
-    [[ -z "${level}" ]] && return 1
-    echo "${level}"
-}
-
-function __convert() {
-    local -r to_convert="$(to_upper "${1}")"
-
-    if is_one_of "${to_convert}" "${!PUBLIC_LOG_LEVELS[@]}"; then
-        __to_severity "${to_convert}" || return 1
-    elif is_one_of "${to_convert}" "${!SEVERITIES[@]}"; then
-        __to_level "${to_convert}" || return 1
-    else
-        echo "[ERROR] unrecognized log level/severity: ${to_convert}"
-        return 1
-    fi
-}
-
-function __current_level() {
-    to_upper "$(log-config -f level -c "${CONFIG_PATH}")"
-}
 
 function __extract_xfm() {
     local xfm="${1}"
@@ -134,23 +95,23 @@ function __extract_xfm() {
 }
 
 function __process_xfm() {
-    local -r current="$(__to_severity "${LOG_LEVEL}")"
+    local -r current="$(LogLevel::to_severity "${LOG_LEVEL}")"
     local xfmed="$(($current"${XFM}"))"
-    local -r level="$(num::bounded $xfmed 0 5)"
+    local -r level="$(num::bounded $xfmed 0 4)"
 
-    LOG_LEVEL="$(__to_level "${level}")" || return 1
+    LOG_LEVEL="$(LogLevel::to_level "${level}")" || return 1
 }
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -v|--validate) VALIDATE="true" ; ERROR_RC=1 ; shift ;;
     -t|--type) export ULOGGER_TYPE="${2}" ; shift ; shift ;;
-    --convert) __convert "${2}" && exit 0 || exit 1 ;;
+    --convert) CONVERT="true" ; shift ;;
     -c|--config) CONFIG_PATH="${2}" ; shift ; shift ;;
     -h|--help) help ; exit 0 ;;
     +*) __extract_xfm "${1}" || exit 1 ; shift ;;
     -*) __extract_xfm "${1}" || exit 1 ; shift ;;
-    *) LOG_LEVEL="$(to_upper "${1}")" ; shift ;;
+    *) LOG_LEVEL="${1}" ; shift ;;
   esac
 done
 
@@ -160,7 +121,16 @@ done
 # arg validation
 
 validate_required_positional "log level" "${LOG_LEVEL}" || exit $ERROR_RC
-validate_one_of "log level" "${LOG_LEVEL}" "${!PUBLIC_LOG_LEVELS[@]}" || exit $ERROR_RC
+
+# convert, if necessary
+
+if [[ -n "${CONVERT}" ]]; then
+    LogLevel::convert "${LOG_LEVEL}" && exit 0 || exit 1
+fi
+
+# validation, continued
+
+LogLevel::validate_public "${LOG_LEVEL}" || exit $ERROR_RC
 
 # if -v|--validate is specified, exit after validating the provided log level
 [[ "${VALIDATE}" == "true" ]] && exit 0
@@ -168,15 +138,13 @@ validate_one_of "log level" "${LOG_LEVEL}" "${!PUBLIC_LOG_LEVELS[@]}" || exit $E
 # config validation
 
 CURRENT_LOG_LEVEL="$(log-config -f level -c "${CONFIG_PATH}")"
+
 validate_required "" "${CURRENT_LOG_LEVEL}" "unable to determine current log level" || exit $ERROR_RC
-validate_one_of "current log level" "${CURRENT_LOG_LEVEL}" "${!LOG_LEVELS[@]}" || exit $ERROR_RC
+LogLevel::validate "${CURRENT_LOG_LEVEL}" || exit $ERROR_RC
 
 # transform provided level before comparison, if necessary
 [[ -n "${XFM}" ]] && __process_xfm
 
 # check if the provided level is high enough severity to log to stdout
-CURRENT_SEVERITY="$(__to_severity "${CURRENT_LOG_LEVEL}")"
-SEVERITY="$(__to_severity "${LOG_LEVEL}")"
-
-[[ ${SEVERITY} -ge ${CURRENT_SEVERITY} ]] && exit 0 || exit 1
+LogLevel::should_log "${LOG_LEVEL}" "${CURRENT_LOG_LEVEL}"
 

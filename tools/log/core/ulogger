@@ -9,36 +9,22 @@ fi
 
 source "${LOCAL_LIB}/bash/args/check.sh"
 source "${LOCAL_LIB}/bash/args/parse.sh"
+source "${LOCAL_LIB}/bash/log/level.sh"
 
 
 declare -A CMDS=(
     # core
-    [write]="      actually write log messages to files and stdout"
-    [level]="      validate and test log levels"
+    [write]="    actually write log messages to files and stdout"
+    [level]="    validate and test log levels"
     # config
-    [config]="     read user and default logger configuration"
-    [configure]="  open user logger config in an editor"
+    [config]="   read user and default logger configuration"
+    [configure]="open user logger config in an editor"
     # inspection
-    [list]="       show list of known log files"
-    [tree]="       show tree of known log files"
+    [list]="     show list of known log files"
+    [tree]="     show tree of known log files"
     # editing
-    [edit]="       edit logs of a specific type"
-    [explore]="    open an editor in the root log directory"
-)
-
-declare -A CMD_ACTIONS=(
-    # core
-    [write]="__handle_write"
-    [level]="__handle_level"
-    # config
-    [config]="__handle_config"
-    [configure]="__handle_configure"
-    # inspection
-    [list]="__handle_list"
-    [tree]="__handle_tree"
-    # editing
-    [edit]="__handle_edit"
-    [explore]="__handle_explore"
+    [explore]="  open logs of a specific type in an editor"
+    [edit]="     alias for explore"
 )
 
 function __cmds() {
@@ -47,7 +33,10 @@ function __cmds() {
 }
 
 function __cmd_descriptions() {
-    for cmd in "${!CMDS[@]}"; do
+    # shellcheck disable=SC2207
+    IFS=$'\n' sorted_cmds=($(sort <<<"${!CMDS[*]}")) ; unset IFS
+
+    for cmd in "${sorted_cmds[@]}"; do
         echo "    ${cmd}       ${CMDS[${cmd}]}"
     done
 }
@@ -76,24 +65,27 @@ help
 
 CMD="write"
 
-function __handle_config() { log-config "$@" ; }
-function __handle_configure() { log-config -e ; }
-function __handle_level() { log-level "$@" ; }
-function __handle_write() { log-write "$@" ; }
-function __handle_list() { log-explore -l ; }
-function __handle_tree() { log-explore -t ; }
-function __handle_edit() { log-explore "$@" ; }
-function __handle_explore() { log-explore ; }
+function log::config() { log-config "$@" ; }
+function log::configure() { log-config -e ; }
+function log::level() { log-level "$@" ; }
+function log::write() { log-write "$@" ; }
+function log::list() { log-explore -l ; }
+function log::tree() { log-explore -t ; }
+function log::edit() { log-explore "$@" ; }
+function log::explore() { log-explore ; }
 
-FIRST="${1:-x}"
+FIRST="$(log-config -f "${1:-}" -a command)"
 
 if is_help_flag "${FIRST}"; then
     help && exit 0
 fi
 
-if is_one_of "${FIRST}" "${!CMD_ACTIONS[@]}"; then
+if is_one_of "${FIRST}" "${!CMDS[@]}"; then
     CMD="${FIRST}" ; shift
+elif [[ -n "${FIRST}" ]] &&  ! LogLevel::is_public "${FIRST}"; then
+    echo "[ERROR] unrecognized command: ${FIRST}"
+    exit 1
 fi
 
-"${CMD_ACTIONS[${CMD}]}" "$@"
+"log::${CMD}" "$@"
 
