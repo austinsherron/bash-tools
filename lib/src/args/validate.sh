@@ -10,7 +10,7 @@ env::default "VALIDATE_USE_ULOGGER" "true"
 __log_error() {
     local msg="${1}"
 
-    if env::is_empty "VALIDATE_USE_ULOGGER" || ! check_installed ulogger; then
+    if env::falsy "VALIDATE_USE_ULOGGER" || ! check_installed ulogger; then
         echo "[ERROR] ${msg}"
     else
         ulogger error "${msg}"
@@ -393,9 +393,10 @@ function validate_optional_file() {
 function validate_dir() {
     local path="${1}"
     local name="${2:-${path}}"
+    local msg="${3:-"${name} must refer to a valid directory"}"
 
     if [[ ! -d "${path}" ]]; then
-        __log_error "${name} must refer to a valid directory"
+        __log_error "${msg}"
         return 1
     fi
 }

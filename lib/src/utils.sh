@@ -167,18 +167,3 @@ function is_darwin() {
     [[ "$(os-type)" == "darwin" ]] || return 1
 }
 
-#######################################
-# Checks if the provided function exists.
-# Arguments:
-#   fn_name: name of the function to check
-# Returns:
-#   0 if the function exists, 1 otherwise
-#   2 if function arguments aren't valid
-#######################################
-function fn_exists() {
-    validate_num_args 1 $# "fn_exists" || return 2
-
-    local fn_name="${1}"
-    [[ $(type -t "${fn_name}") == function ]] && return 0 || return 1
-}
-

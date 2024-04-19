@@ -14,6 +14,5 @@ if ! which "${MGR}" &> /dev/null; then
     exit 1
 fi
 
-# shellcheck disable=SC2068
-"${MGR}" $@
+"${MGR}" "$@"
 
