@@ -19,6 +19,7 @@ declare -A CMDS=(
     # config
     [config]="   read user and default logger configuration"
     [configure]="open user logger config in an editor"
+    [env]="      manipulate ulogger environment variables"
     # inspection
     [list]="     show list of known log files"
     [tree]="     show tree of known log files"
@@ -73,6 +74,7 @@ function log::list() { log-explore -l ; }
 function log::tree() { log-explore -t ; }
 function log::edit() { log-explore "$@" ; }
 function log::explore() { log-explore ; }
+function log::env() { log-env "$@" ; }
 
 FIRST="$(log-config -f "${1:-}" -a command)"
 

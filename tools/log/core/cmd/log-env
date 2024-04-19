@@ -59,13 +59,13 @@ USAGE
 
 OPTIONS
 
-    -r, --read          optional, multi-valued, defaults to "all" if arg is omitted; specify vars to read; values are written to sdout in the form "var_name=value", unless --values is specified
+    -r, --read          optional, multi-valued, defaults to "all" if arg is omitted; specify vars to read; values are written to stdout in the form "var_name=value", unless --values is specified
     -s, --set           optional, multi-valued; specify vars to set in the following format: var_name=value
     -c, --clear         optional, multi-valued; specify vars to clear (i.e.: unset)
 
 FLAGS
 
-    -v, --values        optional; used w/ -r|--read; if provided, only write values to sdout, instead of "var_name=value"
+    -v, --values        optional; used w/ -r|--read; if provided, only write values to stdout, instead of "var_name=value"
     -f|--force          optional; used w/ -s|--set; if provided, overwrite existing environment values
     -h, --help          optional; display this message
 help
