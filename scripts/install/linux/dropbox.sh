@@ -16,6 +16,7 @@ fi
 URL="https://linux.dropbox.com/packages/dropbox.py"
 OUT="${EXTERNAL_PKGS}/dropbox"
 DROPBOX_PATH="${OUT}/dropbox"
+TARGET="${LOCAL_BIN:-/usr/local/bin}"
 
 if [[ ! -d "${OUT}" ]]; then
     echo "[INFO] dropbox dir doesn't exist in external packages; creating"
@@ -34,5 +35,6 @@ fi
 chmod +x "${DROPBOX_PATH}"
 
 echo "deploying dropbox"
-deploy -s "${EXTERNAL_PKGS}" dropbox
+# TODO: test this
+sudo cp "${EXTERNAL_PKGS}/dropbox"/* "${TARGET}"
 
