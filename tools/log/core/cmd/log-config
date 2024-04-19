@@ -73,6 +73,22 @@ DESCRIPTION
 
 $(__field_descriptions)
 
+ALIASES
+
+    Many ulogger components can be aliased in a user's config file, like commands and levels. If -a|--alias [alias-type] is specified, it's value will be used to query for
+    -f|--field the ulogger config file. For example:
+
+        # ulogger/config.toml
+        [alias.command]
+        w = write
+        l = level
+
+        log-config -f w -a command -> write
+
+    If -f|--field isn't found in the relevant alias block, log-config writes that value to stdout: the provided value may not be an alias, but it may still be valid. Returning
+    the original value makes it easy for calling scripts to validate the returned value w/out additional conditional logic. There are only two valid cases: the alias is found,
+    (the returned value should be valid) or it isn't (it's a non-aliased command). All other cases are errors and should be treated as such.
+
 USAGE
 
     ${USAGE}
@@ -82,6 +98,7 @@ OPTIONS
     -f, --field     optional, required if -q|--query isn't specified; the field to read from config; valid values: $(__fields ", ")
     -q, --query     optional, required if -f|--field isn't specified; writes to stdout the config block of the provided type; valid values: $(__query_types ", ")
     -t, --type      optional; the logger type for which config is being read; can also be specified via $\ULOGGER_TYPE
+    -a, --alias     optional; a type of alias for which to query the provided selector; see -a|--alias usage notes above
     -c, --config    optional; a path to a file from which to read user ulogger config
     -e, --edit      optional; if provided, opens the ulogger config file in an editor (configured via \$EDITOR)
     -h, --help      optional; display this message
@@ -92,6 +109,7 @@ help
 FIELD=""
 QUERY=""
 TYPE=""
+ALIAS=""
 EDIT=""
 
 CONFIG_PATH="${XDG_CONFIG_HOME}/ulogger/config.toml"
@@ -102,37 +120,21 @@ DEFAULT_CONFIG_PATH="${TOOLS_ROOT}/log/internal/default.toml"
 while [[ $# -gt 0 ]]; do
   case $1 in
     -f|--field)
-      FIELD="${2}"
-      shift
-      shift
-      ;;
-    -t|--type)
-      [[ -z "${TYPE}" ]] && TYPE="${2}"
-      shift
-      shift
-      ;;
+      FIELD="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     -q|--query)
-      QUERY="${2}"
-      shift
-      shift
-      ;;
+      QUERY="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -t|--type)
+      [[ -z "${TYPE}" ]] && TYPE="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -a|--alias)
+      ALIAS="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     -c|--config)
-      [[ -n "${2}" ]] && CONFIG_PATH="${2}"
-      shift
-      shift
-      ;;
+      [[ -n "${2:-}" ]] && CONFIG_PATH="${2:-}" ; shift ; shift ;;
     -e|--edit)
-      EDIT="true"
-      shift
-      ;;
+      EDIT="true" ; shift ;;
     -h|--help)
-      help
-      exit 0
-      ;;
+      help && exit 0 ;;
     *)
-      usage
-      exit 1
-      ;;
+      usage && exit 1 ;;
   esac
 done
 
@@ -311,6 +313,14 @@ function __handle_query() {
     "__get_${QUERY}_config" || return 1
 }
 
+function __handle_alias() {
+    local -r value="$(__get_from_config ".alias.${ALIAS}.${FIELD}")" || return 1
+
+    [[ -n "${value}" ]] && echo "${value}" && return 0
+
+    echo "${FIELD}"
+}
+
 function __get_level() { __current_log_level ; }
 function __get_path() { __get_full_type_path ; }
 function __get_dir() { __get_type_dir_path ; }
@@ -321,8 +331,12 @@ function __get_config() { echo "${CONFIG_PATH}" ; }
 function __get_pager() { __get_pager_from_config ; }
 
 function __handle_field() {
-    validate_one_of "-f|--field" "${FIELD}" "${!FIELDS[@]}" || return 1
-    "${FIELD_ACTIONS[${FIELD}]}" || return 1
+    if [[ -z "${ALIAS}" ]]; then
+        validate_one_of "-f|--field" "${FIELD}" "${!FIELDS[@]}" || return 1
+        "${FIELD_ACTIONS[${FIELD}]}" || return 1
+    else
+        __handle_alias || return 1
+    fi
 }
 
 validate_file "${CONFIG_PATH}" "-c|--config" || exit 1

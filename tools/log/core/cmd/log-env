@@ -3,10 +3,12 @@
 
 set -Eeuo pipefail
 
-source "${LOCAL_LIB}/bash/args/validate.sh" && export VALIDATE_USE_ULOGGER=""
+export VALIDATE_USE_ULOGGER=""
+source "${LOCAL_LIB}/bash/args/validate.sh"
+source "${LOCAL_LIB}/bash/log/utils.sh"
 
 
-USAGE="log-env [[[-r var] -v] [-s var] [-c var] [-f]]|[vol [-q{q}]|[-v{v}]|[--verbose]]"
+USAGE="log-env [-r [var]] [-s var] [-c var] {flags}"
 
 usage() {
     echo "${USAGE}"
@@ -50,31 +52,22 @@ $(__var_descriptions)
     shell. For example:
 
         eval "\$(log-env -s type=install -s prefix=tools -f)"
-        eval "\$(log-env vol -qqq)"
 
 USAGE
 
     ${USAGE}
 
-POSITIONAL ARGUMENTS
+OPTIONS
 
-    mode                optional; must be the first argument; "vol" is the only recognized value; use for "volume mode": only verbosity related flags are considered, and values are
-                        forcibly "set"; all flags/arguments not listed in volume mode OPTIONS are ignored
-
-OPTIONS ("normal" mode)
-
-    -r, --read          optional, multi-valued; specify vars to read; values are written to sdout in the form "var_name=value", unless --values is specified
-    -v, --values        optional; used w/ -r|--read; if provided, only write values to sdout, instead of "var_name=value"
+    -r, --read          optional, multi-valued, defaults to "all" if arg is omitted; specify vars to read; values are written to sdout in the form "var_name=value", unless --values is specified
     -s, --set           optional, multi-valued; specify vars to set in the following format: var_name=value
-    -f|--force          optional; used w/ -s|--set; if provided, overwrite existing environment values
     -c, --clear         optional, multi-valued; specify vars to clear (i.e.: unset)
+
+FLAGS
+
+    -v, --values        optional; used w/ -r|--read; if provided, only write values to sdout, instead of "var_name=value"
+    -f|--force          optional; used w/ -s|--set; if provided, overwrite existing environment values
     -h, --help          optional; display this message
-
-OPTIONS ("volume" mode)
-
-    -q{-|q}             optional; set "ULOGGER_LEVEL_XFM" env var; # "q"s = # of levels to subtract from log message levels
-    -v{-|v}             optional; set "ULOGGER_LEVEL_XFM" env var; # "v"s = # of levels to add to log message levels
-    --verbose           DEPRECATED; optional; set "ULOGGER_VERBOSE" to "true"
 help
 }
 
@@ -86,7 +79,7 @@ FORCE=""
 CLEAR=()
 
 function __process_read() {
-    local key="${1}"
+    local key="${1:-all}"
 
     if [[ "${key}" == "all" ]]; then
         READ=("${VARS[@]}")
@@ -97,7 +90,7 @@ function __process_read() {
 }
 
 function __process_set() {
-    local var_str="${1}"
+    local var_str="${1:-}"
 
     if [[ ! "${var_str}" =~ [^[:space:]]+=[^[:space:]]+ ]]; then
         echo "[ERROR] to set env vars, provide vars/values in the form: var_key=value"
@@ -114,7 +107,7 @@ function __process_set() {
 }
 
 function __process_clear() {
-    local key="${1}"
+    local key="${1:-1}"
 
     if [[ "${key}" == "all" ]]; then
         CLEAR=("${VARS[@]}")
@@ -171,60 +164,29 @@ function __handle_clear() {
     done
 }
 
-function __normal_mode() {
-    while [[ $# -gt 0 ]]; do
-      case $1 in
-        -r|--read ) __process_read "${2}" || exit 1 ; shift ; shift ;;
-        -v|--values) VALUES="true" ; shift ;;
-        -s|--set) __process_set "${2}" || exit 1 ; shift ; shift ;;
-        -f|--force) FORCE="true" ; shift ;;
-        -c|--clear) __process_clear "${2}" || exit 1 ; shift ; shift ;;
-        -h|--help) help && exit 0 ;;
-        *) usage && exit 1 ;;
-      esac
-    done
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -r|--read )
+        __process_read "${2:-}" || exit 1 ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -v|--values)
+        VALUES="true" ; shift ;;
+    -s|--set)
+        __process_set "${2:-}" || exit 1 ; shift ; shift ;;
+    -f|--force)
+        FORCE="true" ; shift ;;
+    -c|--clear)
+        __process_clear "${2:-}" || exit 1 ; shift ; shift ;;
+    -h|--help)
+        help && exit 0 ;;
+    *)
+        "error: $(usage)" && exit 1 ;;
+  esac
+done
 
-    __handle_read || exit 1
-    __handle_set || exit 1
-    __handle_clear || exit 1
 
-    return 0
-}
-
-function __process_level_xfm() {
-    local flag="${1##-}"
-
-    if [[ "${flag}" =~ ^v+$ ]]; then
-        SET[ULOGGER_LEVEL_XFM]+="+${#flag}"
-    elif [[ "${flag}" =~ ^q+$ ]]; then
-        SET[ULOGGER_LEVEL_XFM]+="-${#flag}"
-    else
-        echo "[ERROR] unrecognized verbosity modifier: -${flag}"
-        return 1
-    fi
-}
-
-function __volume_mode() {
-    while [[ $# -gt 0 ]]; do
-      case $1 in
-        -q*) __process_level_xfm "${1}" || exit 1 ; shift ;;
-        -v*) __process_level_xfm "${1}" || exit 1 ; shift ;;
-        --verbose) SET[ULOGGER_VERBOSE]+="true" ; shift ;;
-        *) shift ;;
-      esac
-    done
-
-    __handle_set || exit 1
-
-    return 0
-}
-
-if [[ $# -ge 1 ]] && [[ "${1}" == "vol" ]]; then
-    FORCE="true" ; shift
-    __volume_mode "$@" || exit 1
-else
-    __normal_mode "$@" || exit 1
-fi
+__handle_read || exit 1
+__handle_set || exit 1
+__handle_clear || exit 1
 
 exit 0
 

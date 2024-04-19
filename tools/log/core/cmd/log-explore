@@ -80,7 +80,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -n "${TYPE}" ]]; then
-    __open_in_editor "${TYPE}" "path"
+    __open_in_editor "path" "${TYPE}"
 else
     __open_in_editor "root"
 fi
