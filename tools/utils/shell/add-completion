@@ -2,8 +2,12 @@
 
 set -Eeuo pipefail
 
+source "${LOCAL_LIB}/bash/args/validate.sh"
+source "${LOCAL_LIB}/bash/log/utils.sh"
+source "${LOCAL_LIB}/bash/utils/file.sh"
 
-USAGE="add-completion -p path [-d dirpath] [-k] [-f]"
+
+USAGE="add-completion completions [-d dir] {flags}"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -13,21 +17,29 @@ help() {
 cat <<help
 DESCRIPTION
 
-    Moves the completion script provided with -p|--path to a directory that's sourced by bash-completion--or to the directory provided with -d|--dir.
+    Add a completion script provided with to a directory that's sourced by bash-completion--or to the directory provided with -d|--dir. The contents of the completion script
+    can be provided via a positional file path argument, or they can be read from stdin: if the provided file/path doesn't exist, it's assumed that completion file contents
+    are coming from stdin.
 
 USAGE
 
     ${USAGE}
 
+POSITIONAL ARGUMENTS
+
+    COMPLETIONS         a path to the completion script to add, or the name to use for the file into which stdin will be read
+
 OPTIONS
 
-    -p, --path          path to the completion script to add
     -d, --dir           optional, defaults to the value of the "COMPLETION_DIR" env var; path to the directory to which to add the completion script; this should be a
                         directory that's sourced by bash-completion
-    -k, --keep          optional; if present, keeps the original completion script provided via -p|--path
-    -f, --force         optional; if present, overwrites any existing completion script in the target dir that collides with the script being added
-    --dry-run           optional; if present, no state changes are made
-    -v, --verbose       optional; if present, print to stdout messages about the script's progress
+
+FLAGS
+
+    -k, --keep          if present, keeps the original completion script provided via COMPLETIONS; only relevant if completions are provided via file path
+    -f, --force         if present, overwrites any existing completion script in the target dir that collides with the script being added
+    --dry-run           if present, no state changes are made
+    -v, --verbose       if present, print to stdout messages about the script's progress
     -h, --help          display this message
 help
 }
@@ -42,56 +54,47 @@ DRY_RUN=""
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="shell"
 export ULOGGER_PREFIX="cmp"
 
+LogFlags::process_log_flags "$@"
+
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -p|--path)
-      COMPLETION_FILE="${2}"
-      shift
-      shift
-      ;;
     -d|--dir)
-      USER_COMPLETION_DIR="${2}"
-      shift
-      shift
-      ;;
+      USER_COMPLETION_DIR="${2}" ; shift ; shift ;;
     -k|--keep)
-      KEEP="true"
-      shift
-      ;;
+      KEEP="true" ; shift ;;
     -f|--force)
-      FORCE="true"
-      shift
-      ;;
+      FORCE="true" ; shift ;;
     --dry-run)
-      DRY_RUN="true"
-      shift
-      ;;
-    -v|--verbose)
-      export ULOGGER_VERBOSE="true"
-      shift
-      ;;
+      DRY_RUN="true" ; shift ;;
+    -v*|-q*)
+      shift ;;
     -h|--help)
-      help
-      exit 0
-      ;;
-     *)
-      usage
-      exit 1
-      ;;
+      help && exit 0 ;;
+    -*)
+      echo "error: $(usage)" && exit 1 ;;
+    *)
+      COMPLETION_FILE="${1}" ; shift ;;
   esac
 done
 
 
-# validate that a completion script was provided and that it's a valid file
-if [[ -z "${COMPLETION_FILE}" ]]; then
-    ulogger error "-p|--path is required"
-    exit 1
+# if the provided completions file doesn't exist, it's assumed it's a filename for content
+# that's coming from stdin
+if [[ ! -f "${COMPLETION_FILE}" ]]; then
+    ulogger info "reading stdin to ${COMPLETION_FILE}"
+
+    COMPLETION_FILE="$(mktemp -d)/${COMPLETION_FILE}"
+    ulogger debug "reading stdin to ${COMPLETION_FILE}"
+
+    file::read "${COMPLETION_FILE}" &> /dev/null
+else
+    COMPLETION_FILE="$(realpath "${COMPLETION_FILE}")"
 fi
 
-if [[ ! -f "${COMPLETION_FILE}" ]]; then
-    ulogger error "-p|--path must refer to a valid file"
-    exit 1
-fi
+echo "here"
+
+# validate that a completion script was provided and that it's a valid file
+validate_file "${COMPLETION_FILE}" "completions" || exit 1
 
 # validate that there's some completion dir available
 if [[ -z "${USER_COMPLETION_DIR}" ]] && [[ -z "${COMPLETION_DIR+x}" ]]; then
@@ -103,14 +106,10 @@ elif [[ -z "${USER_COMPLETION_DIR}" ]]; then
     USER_COMPLETION_DIR="${COMPLETION_DIR}"
 fi
 
-if [[ ! -d "${USER_COMPLETION_DIR}" ]]; then
-    ulogger error "completion dir is not a valid directory (path='${USER_COMPLETION_DIR}')"
-    exit 1
-fi
-
+validate_dir "${USER_COMPLETION_DIR}" "" "completion dir is not a valid directory (path='${USER_COMPLETION_DIR}')" || exit 1
 DST_PATH="${USER_COMPLETION_DIR}/$(basename "${COMPLETION_FILE}")"
 
-# fail if the specified completion, unless the caller explicitly asked to overwrite it
+# fail if the specified completion exists, unless the caller explicitly asked to overwrite it
 if [[ -f "${DST_PATH}" ]] && [[ -z "${FORCE}" ]]; then
     ulogger error "completion file '${DST_PATH}' already exists; exiting"
     exit 1
@@ -121,12 +120,15 @@ fi
 
 ulogger info "copying '${COMPLETION_FILE}' to '${COMPLETION_DIR}'"
 
-[[ -z "${DRY_RUN}" ]] && cp -f ${COMPLETION_FILE} ${USER_COMPLETION_DIR}
+if [[ -z "${DRY_RUN}" ]]; then
+    cp -f "${COMPLETION_FILE}" "${USER_COMPLETION_DIR}"
+    chmod +x "${USER_COMPLETION_DIR}/$(basename "${COMPLETION_FILE}")"
+fi
 
 # delete the source file, unless the caller explicitly asked to keep it
 if [[ -z "${KEEP}" ]]; then
     ulogger info "removing '${COMPLETION_FILE}'"
-    [[ -z "${DRY_RUN}" ]] && rm ${COMPLETION_FILE}
+    [[ -z "${DRY_RUN}" ]] && rm "${COMPLETION_FILE}"
 else
     ulogger info "-k|--keep option detected: preserving '${COMPLETION_FILE}'"
 fi
