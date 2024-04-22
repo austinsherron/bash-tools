@@ -2,8 +2,30 @@
 
 set -Eeuo pipefail
 
+source "${LOCAL_LIB}/bash/core/str.sh"
+source "${LOCAL_LIB}/bash/utils.sh"
+source "${LOCAL_LIB}/bash/utils/file.sh"
 
-USAGE="log-write level msg {msg} [-p prefix] [-t type] [-s normal|notify|log|force] [-n] [-c path]"
+
+declare -A STRATEGIES=(
+    [NORMAL]="the default strategy; lines are written to relevant log files, but are only logged to stdout if the provided log level is >= the current log level"
+    [NOTIFY]="lines are only written to stdout, regardless of log level"
+    [LOG]="   lines are only written to relevant log files"
+    [FORCE]=" lines are written to log files and stdout, regardless of the provided/current log levels"
+)
+
+function strategies() {
+    join_by "|" "${!STRATEGIES[@]}"
+}
+
+function strategy_descriptions() {
+    for strategy in "${!STRATEGIES[@]}"; do
+        local desc="${STRATEGIES[${strategy}]}"
+        echo "    ${strategy}              ${desc}"
+    done
+}
+
+USAGE="log-write level msg {msg} [-p prefix] [-t type] [-s $(strategies)] [-n] [-c path]"
 
 usage() {
     echo "${USAGE}"
@@ -23,17 +45,16 @@ DESCRIPTION
         * warn - messages about abnormal, but not necessarily dangerous, system operations
         * error - messages about abnormal, potentially dangerous system operations that are be considered errors
 
-    Optionally, messages can be logged w/ a prefix, -p|--prefix, (for grouping related log lines), a type, -t|--type, (determines the file to which messages are logged),
-    and a strategy, -s|--strategy. Strategies determine whether messages are written to a file, to stdout, or both. The following are valid strategies:
-
-        * normal - the default strategy; lines are written to relevant log files, but are only logged to stdout if the provided log level is >= the current log level
-        * notify - lines are only written to stdout, regardless of log level
-        * log - lines are only written to relevant log files
-        * force - lines are written to log files and stdout, regardless of the provided/current log levels
+    Messages can optionally be logged w/ a prefix via -p|--prefix (for grouping related log lines), a type via -t|--type (determines the file to which messages are logged),
+    and a strategy via -s|--strategy. Strategies determine whether messages are written to a file, to stdout, or both.
 
 USAGE
 
     ${USAGE}
+
+STRATEGIES
+
+$(strategy_descriptions)
 
 POSITIONAL ARGUMENTS
 
@@ -42,19 +63,26 @@ POSITIONAL ARGUMENTS
 
 OPTIONS
 
-    -p, --prefix        optional; can also be set via the ULOGGER_PREFIX env var; a label w/ which to prefix log messages for enhanced logging granularity
-    -t, --type          optional, defaults to "default"; can also be set via the ULOGGER_TYPE env var; determines the log file to which logs are written; provided types
-                        are used to construct paths of the following form: "\${LOG_ROOT}/\${TYPE}.log"; if that file doesn't exist, it will be created
-    -s, --strategy      optional, defaults to "normal"; can also be set via the ULOGGER_STRATEGY or ULOGGER_VERBOSE env vars; the former sets the "force" strategy;
-                        possible values are "normal", "notify", "log", and "force"; determines where/how logs are written
-    -n, --no-fmt        optional; if present, the log line won't be formatted w/ log level, prefix, date, etc.
+    -p, --prefix        optional; a label w/ which to prefix log messages for enhanced logging granularity
+    -t, --type          optional, defaults to "default"; determines the log file to which logs are written; provided types are used to construct paths of the following form:
+                        "\${LOG_ROOT}/\${TYPE}.log"; if that file doesn't exist, it will be created
+    -s, --strategy      optional, defaults to "normal"; the former sets the "force" strategy; possible values are "normal", "notify", "log", and "force"; determines where/how logs are written
     -c, --config        optional; a path to a file from which to read user ulogger config
-    -h, --help          optional; display this message
+
+FLAGS
+
+    -n, --no-fmt        if present, the log line won't be formatted w/ log level, prefix, date, etc.
+    -h, --help          display this message
+
+GLOBALS
+
+    ULOGGER_PREFIX      env var equivalent of -p|--prefix
+    ULOGGER_STRATEGY    env var equivalent of -s|--strategy
+    ULOGG_TYPE          env var equivalent of -t|--type
+    ULOGGER_VERBOSE     env var equivalent of -v|--verbose
 help
 }
 
-
-declare -A STRATEGIES=([NORMAL]=1 [NOTIFY]=1 [LOG]=1 [FORCE]=1)
 
 MSGS=""
 LOG_LINE=""
@@ -65,58 +93,41 @@ STRATEGY="NORMAL"
 NO_FMT=""
 CONFIG_PATH=""
 
-__to_upper() {
-    local str="${1}"
-    echo "${str}" | tr '[:lower:]' '[:upper:]'
-}
-
-__process_positional() {
+process_positional() {
     if [[ -z "${LOG_LEVEL}" ]]; then
-        LOG_LEVEL="$(__to_upper "${1}")"
+        LOG_LEVEL="$(to_upper "${1}")"
         log-level "${LOG_LEVEL}" -v || exit 1
     else
       MSGS="$([[ -z "${MSGS}" ]] && echo "${1}" || echo "${MSGS} ${1}")"
     fi
 }
 
-[[ -n "${ULOGGER_PREFIX+x}" ]] && PREFIX="$(__to_upper "${ULOGGER_PREFIX}")"
+write_log() {
+    echo -e "$*"
+}
+
+[[ -n "${ULOGGER_PREFIX+x}" ]] && PREFIX="$(to_upper "${ULOGGER_PREFIX}")"
 [[ -n "${ULOGGER_VERBOSE+x}" ]] && [[ "${ULOGGER_VERBOSE}" == "true" ]] && STRATEGY="FORCE"
-[[ -n "${ULOGGER_STRATEGY+x}" ]] && STRATEGY="$(__to_upper "${ULOGGER_STRATEGY}")"
+[[ -n "${ULOGGER_STRATEGY+x}" ]] && STRATEGY="$(to_upper "${ULOGGER_STRATEGY}")"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -p|--prefix)
-      [[ -z "${PREFIX}" ]] && PREFIX="$(__to_upper "${2}")"
-      shift
-      shift
-      ;;
+      [[ -z "${PREFIX}" ]] && PREFIX="$(to_upper "${2}")" ; shift ; shift ;;
     -t|--type)
-      export ULOGGER_TYPE="${2}"
-      shift
-      shift
-      ;;
+      export ULOGGER_TYPE="${2}" ; shift ; shift ;;
     -s|--strategy)
-      [[ -z "${STRATEGY}" ]] && STRATEGY="$(__to_upper "${2}")"
-      shift
-      shift
-      ;;
+      [[ -z "${STRATEGY}" ]] && STRATEGY="$(to_upper "${2}")" ; shift ; shift ;;
     -n|--no-fmt)
-      NO_FMT="true"
-      shift
-      ;;
+      NO_FMT="true" ; shift ;;
     -c|--config)
-      CONFIG_PATH="${2}"
-      shift
-      shift
-      ;;
+      CONFIG_PATH="${2}" ; shift ; shift ;;
     -h|--help)
-      help
-      exit 0
-      ;;
+      help && exit 0 ;;
+    -*)
+      echo "error: $(usage)" && exit 1 ;;
     *)
-      __process_positional "${1}"
-      shift
-      ;;
+      process_positional "${1}" ; shift ;;
   esac
 done
 
@@ -145,19 +156,26 @@ LOG_PATH="$(log-config -f path -c "${CONFIG_PATH}")"
 # create log file if it doesn't exist
 [[ ! -f "${LOG_PATH}" ]] && touch "${LOG_PATH}"
 
+if [[ "${MSGS}" == "-" ]]; then
+    # shellcheck disable=SC2119
+    TMP_FILE="$(file::read)"
+    MSGS="$(cat "${TMP_FILE}")"
+fi
+
 LOG_LINE="${MSGS}"
 OUT_LINE="${MSGS}"
 
 # format log line, if necessary
 if [[ -z "${NO_FMT}" ]]; then
-    PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(__to_upper "${PREFIX}")] " || echo "")"
-    LOG_LINE="[${LOG_LEVEL}] ${PREFIX}${LOG_LINE} ($(date))"
-    OUT_LINE="[${LOG_LEVEL}] ${OUT_LINE}"
+    LEVEL="$(str::right_pad "[${LOG_LEVEL}]" 8)"
+    PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(to_upper "${PREFIX}")] " || echo "")"
+    LOG_LINE="${LEVEL}${PREFIX}${LOG_LINE} ($(date))"
+    OUT_LINE="${LEVEL}${OUT_LINE}"
 fi
 
 # write to log file, if necessary
 if [[ "${STRATEGY}" != "NOTIFY" ]]; then
-    echo "${LOG_LINE}" >> "${LOG_PATH}"
+    write_log "${LOG_LINE}" >> "${LOG_PATH}"
 fi
 
 { log-level "${LOG_LEVEL}"; ERR="$?"; } || true
@@ -167,8 +185,8 @@ if [[ ${ERR} -eq 2 ]]; then
     exit 1
 # write to stdout, if necessary
 elif [[ "${STRATEGY}" == "NORMAL" ]] && [[ "${ERR}" -eq 0 ]]; then
-    echo "${OUT_LINE}"
+    write_log "${OUT_LINE}"
 elif [[ "${STRATEGY}" == "FORCE" ]] || [[ "${STRATEGY}" == "NOTIFY" ]]; then
-    echo "${OUT_LINE}"
+    write_log "${OUT_LINE}"
 fi
 

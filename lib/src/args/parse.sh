@@ -10,7 +10,7 @@
 # Returns:
 #   0 if the provided value is "-h" or "--help", 1 otherwise
 #######################################
-function is_help_flag() {
+function parse::is_help_flag() {
     local flag="${1}"
     [[ "${flag}" == "-h" ]] || [[ "${flag}" == "--help" ]] || return 1
     return 0

@@ -3,6 +3,17 @@
 source "${LOCAL_LIB}/bash/args/validate.sh"
 
 
+# Checks if the provided file exists.
+# Arguments:
+#   file: the path to check
+# Returns:
+#   0 if the provided path refers to a valid file
+#   1 otherwise
+function file::exists() {
+    file="${1}"
+    [[ -f "${file}" ]]
+}
+
 #######################################
 # Reads from stdin and writes to the file at the provided path, or a temporary file if none is provided.
 # Arguments:
@@ -40,3 +51,15 @@ function file::num_lines() {
     wc -l < "${path}" | xargs
 }
 
+#######################################
+# Checks if the provided directory exists.
+# Arguments:
+#   dir: the path to check
+# Returns:
+#   0 if the provided path refers to a valid directory
+#   1 otherwise
+#######################################
+function dir::exists() {
+    dir="${1}"
+    [[ -d "${dir}" ]]
+}
