@@ -2,8 +2,6 @@
 
 set -Eeuo pipefail
 
-# source: https://github.com/nferraz/st
-
 
 VERSION="1.1.4"
 PKG="v${VERSION}.tar.gz"
@@ -13,13 +11,13 @@ DST="${EXTERNAL_PKGS}"
 TGT="${DST}/${PKG}"
 OUT="${DST}/st-${VERSION}"
 
-function __clean() {
+function clean() {
     sudo rm -rf "${TGT}" "${OUT}"
 }
 
 if which st &> /dev/null; then
     echo "[INFO] st is already installed"
-    __clean || exit 1
+    clean || exit 1
     exit 0
 fi
 
@@ -50,5 +48,5 @@ sudo make install
 
 ## clean
 
-__clean
+clean
 
