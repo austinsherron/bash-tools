@@ -64,54 +64,14 @@ function md5_checksum() {
 }
 
 #######################################
-# Converts a string to lowercase.
-# Arguments:
-#   str: the string to convert
-# Outputs:
-#   Writes the lower-case string to stdout
-# Returns:
-#   0 if checksum is valid, 1 otherwise (i.e.: on validation failure or if md5sum isn't formatted properly)
-#   2 if function arguments aren't valid
-#######################################
-function to_lower() {
-    validate_num_args 1 $# "to_lower" || return 2
-
-    local str="${1}"
-    echo "${str}" |  tr '[:upper:]' '[:lower:]'
-}
-
-#######################################
-# Converts a string to uppercase.
-# Arguments:
-#   str: the string to convert
-# Outputs:
-#   Writes the upper-case string to stdout
-# Returns:
-#   1 if function arguments aren't valid
+# Deprecated: use str::upper
+# TODO: replace uses of this function w/ str::upper
 #######################################
 function to_upper() {
     validate_num_args 1 $# "to_upper" || return 1
 
     local str="${1}"
     echo "${str}" |  tr '[:lower:]' '[:upper:]'
-}
-
-#######################################
-# Checks if a string ends w/ a suffix.
-# Arguments:
-#   str: the string to check
-#   sfx: the suffix to check
-# Returns:
-#   0 if the string ends w/ sfx, 1 otherwise
-#   2 if function arguments aren't valid
-#######################################
-function endswith() {
-    validate_num_args 2 $# "endswith" || return 2
-
-    local str="${1}"
-    local sfx="${2}"
-
-    [[ "${str}" == *"${sfx}" ]] && return 0 || return 1
 }
 
 #######################################
@@ -141,29 +101,10 @@ function yes_or_no() {
 }
 
 #######################################
-# Gets the current OS type, i.e.: (linux, darwin, etc.)
-# Outputs:
-#   Writes the current OS type to stdout
+# Deprecated: use sys::os_type
+# TODO: replace uses of this function w/ sys::os_type
 #######################################
 function os-type() {
     uname | tr '[:upper:]' '[:lower:]'
-}
-
-#######################################
-# Checks if the current system is linux based.
-# Returns:
-#   0 if the current system is linux based, 1 otherwise
-#######################################
-function is_linux() {
-    [[ "$(os-type)" == "linux" ]] || return 1
-}
-
-#######################################
-# Checks if the current system is darwin based.
-# Returns:
-#   0 if the current system is darwin based, 1 otherwise
-#######################################
-function is_darwin() {
-    [[ "$(os-type)" == "darwin" ]] || return 1
 }
 
