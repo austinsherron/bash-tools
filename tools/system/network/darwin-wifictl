@@ -1,0 +1,274 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${LOCAL_LIB}/bash/args/validate.sh"
+source "${LOCAL_LIB}/bash/log/utils.sh"
+source "${LOCAL_LIB}/bash/utils/exec.sh"
+
+
+## constants
+
+AIRPORT="/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
+
+declare -A CMDS=(
+    [active]=current
+    [check]=validate
+    [connect]=connect
+    [current]=current
+    [disable]=disable
+    [enble]=enable
+    [join]=connect
+    [list]=list
+    [ls]=list
+    [off]=disable
+    [on]=enable
+    [speed]=test
+    [test]=test
+    [validate]=validate
+)
+
+declare -A CMD_DESCRIPTIONS=(
+    [connect]=" connect to a wifi network; default command"
+    [current]=" get the name of the current wifi network (if any)"
+    [disable]=" disable wifi"
+    [enble]="   enable wifi"
+    [list]="    list available wifi networks"
+    [test]="    run a speedtest for the current network"
+    [validate]="check that the provided network exists"
+)
+
+declare -A CMD_ALIASES=(
+    [connect]=join
+    [current]=active
+    [list]=ls
+    [disable]=off
+    [enable]=on
+    [test]=speed
+    [validate]=check
+)
+
+## docs
+
+function cmd_descriptions() {
+    local alises=""
+
+    # shellcheck disable=SC2207
+    IFS=$'\n' sorted_cmds=($(sort <<<"${!CMD_DESCRIPTIONS[*]}")) ; unset IFS
+
+    for cmd in "${sorted_cmds[@]}"; do
+        [[ -n "${CMD_ALIASES[${cmd}]+z}" ]] && alises="; aliases=${CMD_ALIASES[${cmd}]}"
+        echo "    ${cmd}           ${CMD_DESCRIPTIONS[${cmd}]}${alises}"
+    done
+}
+
+USAGE="wifictl [cmd] [-n network] [-p password] {flags}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Utility for performing various wifi/network related actions from the CLI.
+
+USAGE
+
+    ${USAGE}
+
+COMMANDS
+
+$(cmd_descriptions)
+
+POSITIONAL ARGUMENTS
+
+    CMD                     optional, defaults to "current"; the command to run; see COMMANDS for available options
+
+OPTIONS
+
+    -n, --network           required for "validate" cmd, optional for "connect"; the network to use
+    -p, --password          optional for "connect" cmd if the network's password is in a 1password item w/ the same name as the network; the network's password
+
+FLAGS
+
+    -i, --interactive       if specified, requires confirmation before each state change
+    -d, --dry-run           if present, no state changes are made
+    -v+, -q+                increase/decrease logger verbosity
+    -h, --help              display this message
+help
+}
+
+
+## script globals
+
+CMD="current"
+NETWORK=""
+PASSWORD=""
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="sys"
+export ULOGGER_PREFIX="network"
+
+## internal helpers
+
+function current_network() {
+    ulogger info "checking current network"
+
+    if ! "${AIRPORT}" -I | awk '/ SSID:/ {print $2}'; then
+        local rc=$?
+
+        ulogger error "unable to determine current network"
+        return $rc
+    fi
+}
+
+function list_networks() {
+    if ! "${AIRPORT}" scan | tail --lines=+2 | awk '{print $1}' | sort -u; then
+        local rc=$?
+
+        ulogger error "unable to determine current network"
+        return $rc
+    fi
+}
+
+function show_networks() {
+    ulogger info "fetching networks..."
+    list_networks
+}
+
+function is_network() {
+    validate_required "-n|--network" "${NETWORK}" || return 1
+    list_networks | grep -q "${NETWORK}"
+}
+
+function validate_network() {
+    error_level="${1:-warn}"
+
+    if ! is_network; then
+        ulogger "${error_level}" "${NETWORK} is not a valid network"
+        return 1
+    fi
+
+    ulogger info "${NETWORK} is a valid network"
+}
+
+function choose_network() {
+    ulogger info "fetching networks..."
+    list_networks | fzf --height=11 +i +m -e
+}
+
+function find_password() {
+    ulogger info "-|--password not provided; checking 1password for ${NETWORK} password"
+
+    if ! PASSWORD="$(op item get --account my "${NETWORK}" --fields password)"; then
+        ulogger error "unable to find network password in 1password"
+        return 1
+    fi
+}
+
+function disable_wifi() {
+    ulogger info "disabling wifi"
+
+    if ! networksetup -setairportpower en0 off; then
+        ulogger error "unable to disable wifi"
+        return 1
+    fi
+
+    ulogger info "wifi disabled"
+}
+
+function enable_wifi() {
+    ulogger info "enabling wifi"
+
+    if ! networksetup -setairportpower en0 on; then
+        ulogger error "unable to enable wifi"
+        return 1
+    fi
+
+    ulogger info "wifi enabled"
+}
+
+function connect_to_network() {
+    ulogger info "connecting to network=${NETWORK}"
+
+    if ! networksetup -setairportnetwork en0 "${NETWORK}" "${PASSWORD}"; then
+        ulogger error "unable to connect to network=${NETWORK}"
+        return 1
+    fi
+}
+
+function connect() {
+    if [[ -z "${NETWORK}" ]]; then
+        NETWORK="$(choose_network)" || return 1
+    fi
+
+    if [[ -z "${PASSWORD}" ]]; then
+        find_password || return 1
+    fi
+
+    echo "${PASSWORD}"
+
+    validate_network error || return 1
+
+    exec::interactive "Connect to ${NETWORK}?" "connect_to_network"
+
+    ulogger info "connected to network=${NETWORK}"
+}
+
+function network_speedtest() {
+    local -r errlog="$(mktemp -t wifictl-speedtest)"
+
+    ulogger info "running speedtest..."
+
+    if ! speedtest --simple 2> "${errlog}"; then
+        ulogger error "running speedtest; error logs in ${errlog}"
+        return 1
+    fi
+}
+
+## arg parsing
+
+LogFlags::process_log_flags "$@"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -n|--network)
+      NETWORK="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -p|--password)
+      PASSWORD="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -i|--interactive)
+      export INTERACTIVE="true" ; shift ;;
+    -d|--dry-run)
+      export DRY_RUN="true" ; shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    -v*|-q*)
+      shift ;;
+    -*)
+      usage && exit 1 ;;
+    *)
+      CMD="${1}"; shift ;;
+  esac
+done
+
+
+## action helpers
+
+function action::connect() { connect; }
+function action::current() { current_network; }
+function action::disable() { disable_wifi; }
+function action::enable() { enable_wifi; }
+function action::list() { show_networks; }
+function action::test() { network_speedtest; }
+function action::validate() { validate_network; }
+
+## arg validation
+
+validate_installed "wifictl" fzf op speedtest
+validate_one_of "cmd" "${CMD}" "${!CMDS[@]}" || exit 1
+
+## main
+
+"action::${CMDS[${CMD}]}" || exit 1
+
