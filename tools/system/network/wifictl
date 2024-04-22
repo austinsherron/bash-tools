@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${LOCAL_LIB}/bash/utils.sh"
+
+
+OS="$(os-type)"
+CTL="${OS}-wifictl"
+
+if ! which "${CTL}" &> /dev/null; then
+    ulogger error "no known wifictl for os=${OS} (pkgmgr=${CTL})"
+    exit 1
+fi
+
+"${CTL}" "$@"
+
