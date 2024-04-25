@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 source /etc/profile.d/shared_paths.sh
-source "${LOCAL_LIB}/bash/utils.sh"
+source "${BASH_LIB}/utils.sh"
 
 
 USAGE="usage: cronctl -s -c [-u] [-q] [-d] [-m|--strict] [--load|--save path] [-v]"

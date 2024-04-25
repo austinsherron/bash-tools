@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-source "${LOCAL_LIB}/bash/args/validate.sh"
-source "${LOCAL_LIB}/bash/utils/env.sh"
-source "${LOCAL_LIB}/bash/utils/input.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/utils/env.sh"
+source "${BASH_LIB}/utils/input.sh"
 
 
 env::default "EXEC_USE_ULOGGER" "true"

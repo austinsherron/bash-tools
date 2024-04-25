@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 source /etc/profile.d/shared_paths.sh
-source "${LOCAL_LIB}/bash/args/validate.sh"
+source "${BASH_LIB}/args/validate.sh"
 
 
 export CONFIRM_RC_YES=0

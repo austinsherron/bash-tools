@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 source /etc/profile.d/shared_paths.sh
-source "${LOCAL_LIB}/bash/utils.sh"
+source "${BASH_LIB}/utils.sh"
 
 
 USAGE="usage: nerd-font.sh -n name [-s style] -f file [-d dirpath]"

@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 source /etc/profile.d/shared_paths.sh
-source "${LOCAL_LIB}/bash/utils.sh"
+source "${BASH_LIB}/utils.sh"
 
 
 USAGE="usage: lua-path {-d} [-p] [-a] [-i] [-s] [--depth] [--args]"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source "${LOCAL_LIB}/bash/args/validate.sh"
+source "${BASH_LIB}/args/validate.sh"
 
 
 VERSION_PATTERN="^(v?)(([0-9]+)\.([0-9]+)\.([0-9]+))([-_][^[:space:]]+)?$"

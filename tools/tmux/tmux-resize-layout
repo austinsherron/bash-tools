@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 
 source /etc/profile.d/shared_paths.sh
-source "${LOCAL_LIB}/bash/log/utils.sh"
-source "${LOCAL_LIB}/bash/utils.sh"
+source "${BASH_LIB}/log/utils.sh"
+source "${BASH_LIB}/utils.sh"
 
 
 USAGE="tmux-resize-layout [-l layout] [-t window] [-s path] [--strict] [--force]"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1102
 
-source "${LOCAL_LIB}/bash/args/check.sh"
-source "${LOCAL_LIB}/bash/utils/env.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/utils/env.sh"
 
 
 env::default "VALIDATE_USE_ULOGGER" "true"

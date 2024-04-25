@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 export VALIDATE_USE_ULOGGER=""
-source "${LOCAL_LIB}/bash/args/check.sh"
-source "${LOCAL_LIB}/bash/args/validate.sh"
-source "${LOCAL_LIB}/bash/utils.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/utils.sh"
 
 
 declare -A SEVERITIES=(

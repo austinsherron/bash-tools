@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source "${LOCAL_LIB}/bash/args/check.sh"
+source "${BASH_LIB}/args/check.sh"
 
 set -Eeuo pipefail
 
