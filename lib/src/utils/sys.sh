@@ -40,6 +40,15 @@ function sys::arch() {
 }
 
 #######################################
+# Gets the current host's name.
+# Outputs:
+#   Write the current host's name to stdout
+#######################################
+function sys::hostname() {
+    hostname -s
+}
+
+#######################################
 # Gets the current user's username.
 # Globals:
 #   USERNAME
