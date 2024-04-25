@@ -9,10 +9,12 @@ source "${LOCAL_LIB}/bash/utils.sh"
 
 help() {
 cat <<help
-A script used to rename old Dropbox "month" directories that don't used the format I used today:
+DESCRIPTION
 
-    Old -> "Month" = April
-    New -> "MM - Month" = 04 - April
+    A script used to rename old Dropbox "month" directories that don't used the format I used today:
+
+        Old -> "Month" = April
+        New -> "MM - Month" = 04 - April
 
 ARGUMENTS
 
