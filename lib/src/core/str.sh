@@ -8,13 +8,9 @@
 # Outputs:
 #   Writes the lower-case string to stdout
 # Returns:
-#   0 if checksum is valid,
-#   1 on validation failure or if md5sum isn't formatted properly
-#   2 if function arguments aren't valid
+#   1 if function arguments aren't valid
 #######################################
 function str::lower() {
-    validate_num_args 1 $# "str::lower" || return 2
-
     local str="${1}"
     echo "${str}" |  tr '[:upper:]' '[:lower:]'
 }
@@ -29,8 +25,6 @@ function str::lower() {
 #   1 if function arguments aren't valid
 #######################################
 function str::upper() {
-    validate_num_args 1 $# "str::upper" || return 1
-
     local str="${1}"
     echo "${str}" |  tr '[:lower:]' '[:upper:]'
 }
@@ -46,8 +40,6 @@ function str::upper() {
 #   2 if function arguments aren't valid
 #######################################
 function str::endswith() {
-    validate_num_args 2 $# "str::endswith" || return 2
-
     local str="${1}"
     local sfx="${2}"
 
@@ -65,11 +57,25 @@ function str::endswith() {
 #   1 if function arguments aren't valid
 #######################################
 function str::right_pad() {
-    validate_num_args 2 $# "str::right_pad" || return 1
-
     local str="${1}"
     local len="${2}"
 
     printf "%-${len}s" "${str}"
 }
 
+#######################################
+# Joins arguments 2-n by first argument.
+# Source: https://stackoverflow.com/questions/1527049/how-can-i-join-elements-of-a-bash-array-into-a-delimited-string
+# Arguments:
+#   sep: optional; string to use to join elements
+#   optional; n strings to join w/ sep
+# Outputs:
+#   Writes joined string to stdout
+#######################################
+function str::join() {
+    local sep=${1-} f=${2-}
+
+    if shift 2; then
+        printf %s "$f" "${@/#/$sep}"
+    fi
+}

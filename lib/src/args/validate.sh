@@ -2,6 +2,7 @@
 # shellcheck disable=SC1102
 
 source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/core/str.sh"
 source "${BASH_LIB}/utils/env.sh"
 
 

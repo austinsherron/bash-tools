@@ -107,6 +107,43 @@ function file::is_text() {
 }
 
 #######################################
+# Creates a path from parts. Filters out empty parts to avoid extra separators.
+# Arguments:
+#   n path parts to join w/ forward-slash ('/')
+# Outputs:
+#   Writes to stdout a single path comprised of provided non-empty path parts
+#######################################
+function file::make_path() {
+    local path=""
+
+    [[ $# -ge 1 ]] && path="${1}" ; shift
+
+    while [[ $# -gt 0 ]]; do
+        [[ -n "${1}" ]] && path="${path}/${1}" ; shift
+    done
+
+    echo "${path}"
+}
+
+#######################################
+# Checks an md5 checksum file.
+# Arguments:
+#   path: the path to the checksum file
+# Returns:
+#   0 if checksum is valid, 1 otherwise (i.e.: on validation failure or if md5sum isn't formatted properly)
+#   2 if function arguments aren't valid
+#######################################
+function file::md5_checksum() {
+    validate_num_args 1 $# "file::md5_checksum" || return 2
+
+    local path="${1}"
+
+    validate_file "${path}" || return 2
+    md5sum -c --status "${path}"
+}
+
+
+#######################################
 # Checks if the provided directory exists.
 # Arguments:
 #   dir: the path to check

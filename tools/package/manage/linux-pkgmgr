@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 source /etc/profile.d/shared_paths.sh
-source "${BASH_LIB}/utils.sh"
+source "${BASH_LIB}/utils/sys.sh"
 
 
 USAGE="pkgmgr [cmd] -p pkg [-m mgr] [-a] [-f] [-s script {--script-arg [arg]}]"
@@ -117,7 +117,7 @@ done
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="pkg"
 export ULOGGER_PREFIX="${CMD}"
 
-if [[ "$(os-type)" == "linux" ]]; then
+if ! sys::is_linux; then
     ulogger error "linux-pkgmgr can only be used on linux systems"
     exit 1
 fi
@@ -151,7 +151,7 @@ __run_script() {
     [[ -z "${SCRIPT[${CMD}]+x}" ]] && ulogger error "cannot use cmd=${CMD} w/ mgr=script" && return 1
 
     local script_path
-    script_path="${SCRIPTS_ROOT}/install/$(os-type)/${PKG}.sh"
+    script_path="${SCRIPTS_ROOT}/install/$(sys::os_type)/${PKG}.sh"
 
     if [[ ! -f "${script_path}" ]]; then
         ulogger debug "script=${script_path} doesn't exist; falling back to os-agnostic path"

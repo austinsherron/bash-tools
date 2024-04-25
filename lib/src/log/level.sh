@@ -3,7 +3,7 @@
 export VALIDATE_USE_ULOGGER=""
 source "${BASH_LIB}/args/check.sh"
 source "${BASH_LIB}/args/validate.sh"
-source "${BASH_LIB}/utils.sh"
+source "${BASH_LIB}/core/str.sh"
 
 
 declare -A SEVERITIES=(
@@ -39,7 +39,7 @@ export LOG_LEVEL_DEFAULT
 
 function __level() {
     local level="${1}"
-    to_upper "$(log-config -f "${level}" -a level)"
+    str::upper "$(log-config -f "${level}" -a level)"
 }
 
 #######################################

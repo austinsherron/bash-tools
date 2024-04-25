@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 source /etc/profile.d/shared_paths.sh
-source "${BASH_LIB}/utils.sh"
+source "${BASH_LIB}/utils/sys.sh"
 
 
 USAGE="pkgmgr cmd [-p pkg [-c]|-t] [-f] [-s script {--script-arg [arg]}] {brew-args}"
@@ -128,7 +128,7 @@ done
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="pkg"
 export ULOGGER_PREFIX="${CMD}"
 
-if [[ "$(os-type)" != "darwin" ]]; then
+if ! sys::is_darwin; then
     ulogger error "darwin-pkgmgr can only be used on darwin systems"
     exit 1
 fi
@@ -163,7 +163,7 @@ __process_cmd() {
 
 __run_script() {
     local script_path
-    script_path="${SCRIPTS_ROOT}/install/$(os-type)/${SCRIPT}.sh"
+    script_path="${SCRIPTS_ROOT}/install/$(sys::os_type)/${SCRIPT}.sh"
 
     if [[ ! -f "${script_path}" ]]; then
         ulogger debug "script=${script_path} doesn't exist; falling back to os-agnostic path"

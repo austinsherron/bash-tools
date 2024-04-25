@@ -87,7 +87,7 @@ fi
 
 if is_one_of "${FIRST}" "${!CMDS[@]}"; then
     CMD="${FIRST}" ; shift
-elif [[ -n "${FIRST}" ]] &&  ! LogLevel::is_public "${FIRST}"; then
+elif [[ -n "${FIRST}" ]] && ! LogLevel::is_public "${FIRST}"; then
     echo "[ERROR] unrecognized command: ${FIRST}"
     exit 1
 fi

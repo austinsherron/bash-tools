@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 
 source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/core/str.sh"
 source "${BASH_LIB}/utils/exec.sh"
-source "${BASH_LIB}/utils.sh"
 
 
 help() {

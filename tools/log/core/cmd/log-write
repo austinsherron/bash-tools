@@ -3,7 +3,6 @@
 set -Eeuo pipefail
 
 source "${BASH_LIB}/core/str.sh"
-source "${BASH_LIB}/utils.sh"
 source "${BASH_LIB}/utils/file.sh"
 
 
@@ -15,7 +14,7 @@ declare -A STRATEGIES=(
 )
 
 function strategies() {
-    join_by "|" "${!STRATEGIES[@]}"
+    str::join "|" "${!STRATEGIES[@]}"
 }
 
 function strategy_descriptions() {
@@ -95,7 +94,7 @@ CONFIG_PATH=""
 
 process_positional() {
     if [[ -z "${LOG_LEVEL}" ]]; then
-        LOG_LEVEL="$(to_upper "${1}")"
+        LOG_LEVEL="$(str::upper "${1}")"
         log-level "${LOG_LEVEL}" -v || exit 1
     else
       MSGS="$([[ -z "${MSGS}" ]] && echo "${1}" || echo "${MSGS} ${1}")"
@@ -106,18 +105,18 @@ write_log() {
     echo -e "$*"
 }
 
-[[ -n "${ULOGGER_PREFIX+x}" ]] && PREFIX="$(to_upper "${ULOGGER_PREFIX}")"
+[[ -n "${ULOGGER_PREFIX+x}" ]] && PREFIX="$(str::upper "${ULOGGER_PREFIX}")"
 [[ -n "${ULOGGER_VERBOSE+x}" ]] && [[ "${ULOGGER_VERBOSE}" == "true" ]] && STRATEGY="FORCE"
-[[ -n "${ULOGGER_STRATEGY+x}" ]] && STRATEGY="$(to_upper "${ULOGGER_STRATEGY}")"
+[[ -n "${ULOGGER_STRATEGY+x}" ]] && STRATEGY="$(str::upper "${ULOGGER_STRATEGY}")"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -p|--prefix)
-      [[ -z "${PREFIX}" ]] && PREFIX="$(to_upper "${2}")" ; shift ; shift ;;
+      [[ -z "${PREFIX}" ]] && PREFIX="$(str::upper "${2}")" ; shift ; shift ;;
     -t|--type)
       export ULOGGER_TYPE="${2}" ; shift ; shift ;;
     -s|--strategy)
-      [[ -z "${STRATEGY}" ]] && STRATEGY="$(to_upper "${2}")" ; shift ; shift ;;
+      [[ -z "${STRATEGY}" ]] && STRATEGY="$(str::upper "${2}")" ; shift ; shift ;;
     -n|--no-fmt)
       NO_FMT="true" ; shift ;;
     -c|--config)
@@ -166,7 +165,7 @@ OUT_LINE="${MSGS}"
 # format log line, if necessary
 if [[ -z "${NO_FMT}" ]]; then
     LEVEL="$(str::right_pad "[${LOG_LEVEL}]" 8)"
-    PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(to_upper "${PREFIX}")] " || echo "")"
+    PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(str::upper "${PREFIX}")] " || echo "")"
     LOG_LINE="${LEVEL}${PREFIX}${LOG_LINE} ($(date))"
     OUT_LINE="${LEVEL}${OUT_LINE}"
 fi
