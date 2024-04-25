@@ -124,8 +124,6 @@ while [[ $# -gt 0 ]]; do
       CONFIG_PATH="${2}" ; shift ; shift ;;
     -h|--help)
       help && exit 0 ;;
-    -*)
-      echo "error: $(usage)" && exit 1 ;;
     *)
       process_positional "${1}" ; shift ;;
   esac
