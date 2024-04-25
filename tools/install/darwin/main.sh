@@ -6,8 +6,8 @@ set -Eeuo pipefail
 ulogger info "installing ${OS_TYPE} specific tool packages"
 
 ulogger info "deploying shim module"
-deploy -s "${TOOLS_ROOT}/darwin/shim" -n mac-shims
+deploy -s "${TOOLS_ROOT}/darwin/shim" -n mac-shims --pattern brave* --pattern google*
 
 ulogger info "deploying work module"
-deploy -s "${TOOLS_ROOT}/work/granica" -n granica
+deploy -s "${TOOLS_ROOT}/work/granica" -n granica --pattern granica*
 

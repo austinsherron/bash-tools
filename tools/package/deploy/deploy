@@ -54,27 +54,27 @@ declare -A TYPE_DESCRIPTIONS=(
     [lib]="       alias for library"
 )
 
-function __cmds() {
+function cmds() {
     str::join "|" "${!CMDS[@]}"
 }
 
-function __cmd_descriptions() {
+function cmd_descriptions() {
     for cmd in "${!CMD_DESCRIPTIONS[@]}"; do
         echo "    ${cmd}           ${CMD_DESCRIPTIONS[${cmd}]}"
     done
 }
 
-function __types() {
+function types() {
     str::join "|" "${!TYPES[@]}"
 }
 
-function __type_descriptions() {
+function type_descriptions() {
     for type in "${!TYPE_DESCRIPTIONS[@]}"; do
         echo "    ${type}          ${TYPE_DESCRIPTIONS[${type}]}"
     done
 }
 
-USAGE="deploy cmd [-s path] [-d path] {-p pattern} [-n name] [-t $(__types)] [--target target] [--strict level] {flags}"
+USAGE="deploy cmd [-s path] [-d path] {-p pattern} [-n name] [-t $(types)] [--target target] [--strict level] {flags}"
 
 function usage() {
     echo "${USAGE}"
@@ -92,11 +92,11 @@ USAGE
 
 COMMANDS
 
-$(__cmd_descriptions)
+$(cmd_descriptions)
 
 TYPES
 
-$(__type_descriptions)
+$(type_descriptions)
 
 POSITIONAL ARGUMENTS
 
@@ -106,7 +106,7 @@ OPTIONS
 
     -s, --source        optional; defaults to cwd; a path to a file/dir to install
     -d, --dest          optional, defaults to the value of LOCAL_BIN, depending on the availability of path related env variables; the dir to which to install
-    -p, --pattern       WARN: not implemented; optional, multi-valued; patterns for selecting files to install
+    -p, --pattern       optional, multi-valued; patterns for selecting files to install
     -n, --name          optional, defaults to -s|--source; the name of the "package" being installed; used for logging
     -t, --type          optional, defaults to "executable"; the type of file/package being installed; valid values include "exec(utable)" and "lib(rary)"
     --target            optional; optionally rename exec file or library file/dir to this value; not valid w/ --type exec if -s|--source is a directory
@@ -131,7 +131,8 @@ help
 CMD="${DEPLOY_DEFAULT_CMD:-}"
 SOURCE="$(pwd)"
 DEST=""
-PATTERN=()
+RAW_PATTERNS=()
+PATTERNS=()
 NAME=""
 TYPE="executable"
 TARGET=""
@@ -143,6 +144,18 @@ ERROR_RC=0
 
 function is_exec() { [[ "${TYPE}" =~ ^exec(utable)?$ ]]; }
 function is_lib() { [[ "${TYPE}" =~ ^lib(rary)?$ ]]; }
+
+function process_pattern() {
+    local pattern="${1}"
+
+    RAW_PATTERNS+=("${pattern}")
+
+    if [[ ${#PATTERNS[@]} -eq 0 ]]; then
+        PATTERNS+=("-name" "${pattern}")
+    else
+        PATTERNS+=("-o" "-name" "${pattern}")
+    fi
+}
 
 function process_strict() {
     ERROR_LEVEL="${1:-${ERROR_LEVEL}}"
@@ -215,8 +228,10 @@ function clean_path() {
 }
 
 function find_exec_files() {
-    StubLogger::log debug "finding files to deploy: find ${SOURCE} -type f"
-    readarray -t FIND_RESULTS < <(find "${SOURCE}" -type f)
+    local find_cmd=("find" "${SOURCE}" "-type" "f" "${PATTERNS[@]}")
+
+    StubLogger::log debug "finding files to deploy: ${find_cmd[*]}"
+    readarray -t FIND_RESULTS < <("${find_cmd[@]}")
     StubLogger::log info "found ${#FIND_RESULTS[@]} exec files to deploy"
 }
 
@@ -339,7 +354,15 @@ function deploy() {
 }
 
 function debug_call() {
-    StubLogger::log debug "deploy ${CMD}\n  -s ${SOURCE}\n  -d ${DEST}\n  -n ${NAME}\n  -t ${TYPE}\n  --target ${TARGET}\n --strict ${ERROR_LEVEL}"
+    local call_str="deploy ${CMD}\n  -s ${SOURCE}\n  -d ${DEST}\n  -n ${NAME}\n  -t ${TYPE}\n  --target ${TARGET}\n  --strict ${ERROR_LEVEL}"
+    local patterns_str=""
+
+    if [[ ${#RAW_PATTERNS[@]} -gt 0 ]]; then
+        patterns_str="$(str::join " -p " "${RAW_PATTERNS[@]}")"
+        call_str="${call_str}\n  -p ${patterns_str}"
+    fi
+
+    StubLogger::log debug "${call_str}"
     StubLogger::log debug "" --no-fmt -s notify
 }
 
@@ -369,7 +392,7 @@ while [[ $# -gt 0 ]]; do
     -d|--dest)
         DEST="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     -p|--pattern)
-       [[ -n "${2:-}" ]] && PATTERN+=("${2}") ; [[ -n "${2:-}" ]] && shift ; shift ;;
+       [[ -n "${2:-}" ]] && process_pattern "${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     -n|--name)
         NAME="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     -t|--type)
@@ -406,6 +429,8 @@ validate_paths || exit 1
 validate_target || exit 1
 
 set_name_if_blank || exit 1
+
+debug_call
 
 "cmd::${CMDS[${CMD}]}" || exit 1
 
