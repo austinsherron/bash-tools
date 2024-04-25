@@ -26,6 +26,8 @@ declare -A CMDS=(
     # editing
     [explore]="  open logs of a specific type in an editor"
     [edit]="     alias for explore"
+    # util
+    [blank]="    log a blank line to stdout"
 )
 
 function __cmds() {
@@ -75,6 +77,7 @@ function log::tree() { log-explore -t ; }
 function log::edit() { log-explore "$@" ; }
 function log::explore() { log-explore ; }
 function log::env() { log-env "$@" ; }
+function log::blank() { log-write "$@" "" --no-fmt --strategy notify ; }
 
 FIRST="$(log-config -f "${1:-}" -a command)"
 

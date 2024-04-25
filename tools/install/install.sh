@@ -13,50 +13,56 @@ TOOLS_ROOT="$(dirname "${INSTALL_DIR}")"
 BASH_TOOLS="$(dirname "$(dirname "${INSTALL_DIR}")")"
 ULOG_ROOT="${TOOLS_ROOT}/log"
 
-source "${BASH_TOOLS}/lib/src/utils.sh"
+source "${BASH_TOOLS}/lib/src/utils/sys.sh"
 
 export INSTALL_DIR
 export TOOLS_ROOT
 export BASH_TOOLS
 export ULOG_ROOT
 
-function __deploy_ulogger() {
-    "${ULOG_ROOT}/install.sh"
-    export ULOGGER_TYPE="install"
-    export ULOGGER_PREFIX="tools"
-}
+# globals for deploy
+export DEPLOY_DEFAULT_CMD="link"
+export DEPLOY_STRICT="info"
 
-function __install_bash_lib() {
-    "${BASH_TOOLS}/lib/install.sh"
-}
+# globals for ulogger
+export ULOGGER_TYPE="install"
+export ULOGGER_PREFIX="tools"
 
-function __deploy_deployer() {
+function deploy_deployer() {
     "${TOOLS_ROOT}/package/deploy/deploy" --self
 }
 
-function __deploy_common() {
-    deploy -p "${TOOLS_ROOT}/git"
-    deploy -p "${TOOLS_ROOT}/package/manage"
-    deploy -p "${TOOLS_ROOT}/system/config"
-    deploy -p "${TOOLS_ROOT}/system/snapshot"
-    deploy -p "${TOOLS_ROOT}/tmux"
-    deploy -p "${TOOLS_ROOT}/utils/data"
-    deploy -p "${TOOLS_ROOT}/utils/shell"
-    deploy -p "${TOOLS_ROOT}/utils/shell"
-    deploy -p "${TOOLS_ROOT}/utils/web"
+function install_bash_lib() {
+    deploy -s "${BASH_TOOLS}/lib/src" -d "${LOCAL_LIB}/bash" -n bash-lib -t lib
 }
 
-function __install_os_specific() {
-    OS_TYPE="$(os-type)"
+function deploy_ulogger() {
+    deploy -s "${ULOG_ROOT}/core" -n ulogger
+}
+
+function deploy_common() {
+    deploy -s "${TOOLS_ROOT}/git" -n git
+    deploy -s "${TOOLS_ROOT}/package/manage" -n pkgmgr
+    deploy -s "${TOOLS_ROOT}/system/config" -n sys-config
+    deploy -s "${TOOLS_ROOT}/system/network" -n network
+    deploy -s "${TOOLS_ROOT}/system/snapshot" -n snapshot
+    deploy -s "${TOOLS_ROOT}/tmux" -n tmux
+    deploy -s "${TOOLS_ROOT}/utils/data" -n data-utils
+    deploy -s "${TOOLS_ROOT}/utils/shell" -n shell-utils
+    deploy -s "${TOOLS_ROOT}/utils/web" -n web-utils
+}
+
+function install_os_specific() {
+    OS_TYPE="$(sys::os_type)"
     export OS_TYPE
 
     "${TOOLS_ROOT}/install/${OS_TYPE}/main.sh"
 }
 
 # NOTE: order matters here
-__install_bash_lib
-__deploy_ulogger
-__deploy_deployer
-__deploy_common
-__install_os_specific
+deploy_deployer
+install_bash_lib
+deploy_ulogger
+deploy_common
+install_os_specific
 
