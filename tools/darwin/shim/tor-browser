@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+
+/Applications/Tor\ Browser.app/Contents/MacOS/firefox "$@"
+
