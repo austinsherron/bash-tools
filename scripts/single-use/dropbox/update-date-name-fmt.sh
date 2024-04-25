@@ -10,10 +10,12 @@ source "${LOCAL_LIB}/bash/utils.sh"
 
 help() {
 cat <<help
-A script used to rename file w/ names starting w/ dates in a format I no longer use:
+DESCRIPTION
 
-    Old -> "mmddyyyy" = 04192024
-    New -> "yyyymmdd" = 20240419
+    A script used to rename file w/ names starting w/ dates in a format I no longer use:
+
+        Old -> "mmddyyyy" = 04192024
+        New -> "yyyymmdd" = 20240419
 
 ARGUMENTS
 
