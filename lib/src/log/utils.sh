@@ -129,3 +129,30 @@ function LogFlags::process_log_flags() {
     done
 }
 
+#######################################
+# Wraps "log-env --read".
+# Arguments:
+#   All arguments are passed to log-env as arguments to "-r|--read".
+#######################################
+function LogEnv::read() {
+    eval "log-env -r $(join_by " -r " "$@")"
+}
+
+#######################################
+# Wraps "log-env --set".
+# Arguments:
+#   All arguments are passed to log-env as arguments to "-s|--set".
+#######################################
+function LogEnv::set() {
+    eval "$(log-env -s "$(join_by " -s " "$@")")"
+}
+
+#######################################
+# Wraps "log-env --clear".
+# Arguments:
+#   All arguments are passed to log-env as arguments to "-c|--clear".
+#######################################
+function LogEnv::clear() {
+    eval "$(log-env -c "$(join_by " -c " "$@")")"
+}
+

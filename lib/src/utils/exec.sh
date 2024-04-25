@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 source "${LOCAL_LIB}/bash/args/validate.sh"
-source "${LOCAL_LIB}/bash/utils.sh"
 source "${LOCAL_LIB}/bash/utils/env.sh"
+source "${LOCAL_LIB}/bash/utils/input.sh"
 
 
 env::default "EXEC_USE_ULOGGER" "true"
@@ -34,10 +34,13 @@ function __log_msg() {
 #   The return code of the provided command, or 0 if it's not executed
 #######################################
 function exec::dryrun() {
+    local show="${1}"; shift
     local cmd=("$@")
 
     if ! env::exists_not_empty "DRY_RUN"; then
         "${cmd[@]}"
+    elif test "${show}" == "true"; then
+        echo "${cmd[*]}"
     fi
 }
 
@@ -70,14 +73,14 @@ function exec::interactive() {
     local cmd=("$@")
 
     if env::exists_not_empty "INTERACTIVE"; then
-        { yes_or_no "${prompt}"; local rc=$?; }
+        { input::global_confirm "${prompt}"; local rc=$?; }
 
         [[ $rc -eq $CONFIRM_RC_YES_ALL ]] && export INTERACTIVE=""
         [[ $rc -eq $CONFIRM_RC_NO ]] && return $rc
         [[ $rc -eq $CONFIRM_RC_NO_ALL ]] && exit $rc
     fi
 
-    exec::dryrun "${cmd[@]}"
+    exec::dryrun "-" "${cmd[@]}"
 }
 
 #######################################

@@ -11,7 +11,7 @@ __log_error() {
     local msg="${1}"
 
     if env::falsy "VALIDATE_USE_ULOGGER" || ! check_installed ulogger; then
-        echo "[ERROR] ${msg}"
+        echo -e "[ERROR] ${msg}"
     else
         ulogger error "${msg}"
     fi
@@ -38,11 +38,8 @@ function validate_required() {
         return 0
     fi
 
-    if [[ "$(type -t usage)" ]]; then
-        echo "error: $(usage)"
-    else
-        __log_error "${msg}"
-    fi
+    [[ "$(type -t usage)" ]] && msg="${msg}\nusage: $(usage)"
+    __log_error "${msg}"
 
     return 1
 }
