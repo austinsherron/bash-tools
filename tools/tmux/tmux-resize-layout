@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 
 source /etc/profile.d/shared_paths.sh
+source "${BASH_LIB}/core/str.sh"
 source "${BASH_LIB}/log/utils.sh"
-source "${BASH_LIB}/utils.sh"
 
 
 USAGE="tmux-resize-layout [-l layout] [-t window] [-s path] [--strict] [--force]"
@@ -108,7 +108,7 @@ __extract_layout_from_name() {
 }
 
 __extract_layout_from_env() {
-    local -r env_var="TMUX_$(to_upper "${TARGET}_LAYOUT")"
+    local -r env_var="TMUX_$(str::upper "${TARGET}_LAYOUT")"
     local -r env_val="$(tmux show-environment "${env_var}" 2> /dev/null || echo "")"
 
     echo "${env_val}" | cut -d "=" -f2

@@ -2,14 +2,15 @@
 
 set -Eeuo pipefail
 
-source "${BASH_LIB}/utils.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/utils/sys.sh"
 
 
-OS="$(os-type)"
+OS="$(sys::os_type)"
 CTL="${OS}-wifictl"
 
-if ! which "${CTL}" &> /dev/null; then
-    ulogger error "no known wifictl for os=${OS} (pkgmgr=${CTL})"
+if ! check_installed "${CTL}"; then
+    ulogger error "no known wifictl for os=${OS} (wifictl=${CTL})"
     exit 1
 fi
 

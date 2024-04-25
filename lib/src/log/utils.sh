@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 source "${BASH_LIB}/args/check.sh"
-source "${BASH_LIB}/utils.sh"
+source "${BASH_LIB}/core/str.sh"
 
 
 #######################################

@@ -10,12 +10,12 @@ export BASH_LIB="${BASH_TOOLS}/lib/src"
 
 source "${BASH_LIB}/args/check.sh"
 source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/core/str.sh"
 source "${BASH_LIB}/log/level.sh"
 source "${BASH_LIB}/log/stub.sh"
 source "${BASH_LIB}/log/utils.sh"
 source "${BASH_LIB}/utils/exec.sh"
 source "${BASH_LIB}/utils/file.sh"
-source "${BASH_LIB}/utils.sh"
 
 
 declare -A CMDS=(
@@ -55,7 +55,7 @@ declare -A TYPE_DESCRIPTIONS=(
 )
 
 function __cmds() {
-    join_by "|" "${!CMDS[@]}"
+    str::join "|" "${!CMDS[@]}"
 }
 
 function __cmd_descriptions() {
@@ -65,7 +65,7 @@ function __cmd_descriptions() {
 }
 
 function __types() {
-    join_by "|" "${!TYPES[@]}"
+    str::join "|" "${!TYPES[@]}"
 }
 
 function __type_descriptions() {
@@ -146,7 +146,7 @@ function is_lib() { [[ "${TYPE}" =~ ^lib(rary)?$ ]]; }
 
 function process_strict() {
     ERROR_LEVEL="${1:-${ERROR_LEVEL}}"
-    validate_one_of "--strict" "$(to_upper "${ERROR_LEVEL}")" "${!PUBLIC_LOG_LEVELS[@]}"
+    validate_one_of "--strict" "$(str::upper "${ERROR_LEVEL}")" "${!PUBLIC_LOG_LEVELS[@]}"
 
     if [[ "${ERROR_LEVEL}" == "error" ]]; then
         ERROR_RC=1
