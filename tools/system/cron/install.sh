@@ -1,3 +1,6 @@
+#!/usr/bin/env bash
+
+
 # TODO: implement crontab installation script; tasks:
 #
 #   - [x] mv cron executables to "tools:system/cron/run", or something like that
@@ -5,7 +8,7 @@
 #   - [ ] implement this script using enhancements to cronctl
 
 ulogger info "deploying system/cron/run module"
-deploy -s system/cron run
+deploy link -s "${BASH_TOOLS}/tools/system/cron/run" -n "cron-run" --strict info
 
 ulogger info "saving existing crontab for user=\"austin\" to austin.txt.bak"
 # TODO: cronctl -u austin --save "${TOOLS_ROOT}/system/cron/crontab/austin.txt.bak"

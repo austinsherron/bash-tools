@@ -2,12 +2,79 @@
 
 set -Eeuo pipefail
 
-source "${TOOLS_ROOT}/log/internal/log.sh"
+export VALIDATE_USE_ULOGGER=""
+export EXEC_USE_ULOGGER=""
+
+# NOTE: import src files, as this script may be called before lib installation
+source "${BASH_TOOLS}/lib/src/args/check.sh"
+source "${BASH_TOOLS}/lib/src/args/validate.sh"
+source "${BASH_TOOLS}/lib/src/log/level.sh"
+source "${BASH_TOOLS}/lib/src/log/stub.sh"
+source "${BASH_TOOLS}/lib/src/log/utils.sh"
+source "${BASH_TOOLS}/lib/src/utils/exec.sh"
+source "${BASH_TOOLS}/lib/src/utils/file.sh"
+source "${BASH_TOOLS}/lib/src/utils.sh"
 
 
-USAGE="deploy package {package} [-s] [-t] [-r] [-u] [--self][-d] [-v 0..5]"
+declare -A CMDS=(
+    [clean]="clean"
+    [dev]="link"
+    [link]="link"
+    [install]="install"
+    [relink]="relink"
+    [reinstall]="reinstall"
+    [remove]="clean"
+    [uninstall]="clean"
+)
 
-usage() {
+declare -A CMD_DESCRIPTIONS=(
+    [clean]="    cleans (i.e.: removes/unlinks) files from the target area"
+    [dev]="      alias for link"
+    [link]="     links files to the target area so changes are reflected immediately"
+    [install]="  copies files to the target area"
+    [relink]="   alias for clean + link"
+    [reinstall]="alias for clean + install"
+    [remove]="   alias for clean"
+    [uninstall]="alias for clean"
+)
+
+declare -A TYPES=(
+    [executable]="${LOCAL_BIN:-/usr/local/bin}"
+    [exec]="${LOCAL_BIN:-/usr/local/bin}"
+    [library]="${LOCAL_LIB:-/usr/local/lib}"
+    [lib]="${LOCAL_LIB:-/usr/local/lib}"
+)
+
+declare -A TYPE_DESCRIPTIONS=(
+    [executable]="an executable file/group of files intended for direct use"
+    [exec]="      alias for executable"
+    [library]="   a file/group of files intended for indirect use"
+    [lib]="       alias for library"
+)
+
+function __cmds() {
+    join_by "|" "${!CMDS[@]}"
+}
+
+function __cmd_descriptions() {
+    for cmd in "${!CMD_DESCRIPTIONS[@]}"; do
+        echo "    ${cmd}           ${CMD_DESCRIPTIONS[${cmd}]}"
+    done
+}
+
+function __types() {
+    join_by "|" "${!TYPES[@]}"
+}
+
+function __type_descriptions() {
+    for type in "${!TYPE_DESCRIPTIONS[@]}"; do
+        echo "    ${type}          ${TYPE_DESCRIPTIONS[${type}]}"
+    done
+}
+
+USAGE="deploy cmd [-s path] [-d path] {-p pattern} [-n name] [-t $(__types)] [--target target] [--strict level] {flags}"
+
+function usage() {
     echo "${USAGE}"
 }
 
@@ -15,130 +82,328 @@ help() {
 cat <<help
 DESCRIPTION
 
-    A thin wrapper around stow for installing/removing internal and manually installed packages.
+    A utility for installing/deploying arbitrary (executable) files.
 
 USAGE
 
     ${USAGE}
 
+COMMANDS
+
+$(__cmd_descriptions)
+
+TYPES
+
+$(__type_descriptions)
+
 POSITIONAL ARGUMENTS
 
-    PACKAGE             >= 1 required if -p|--path not used, multi-valued; packages, relative to -s|--srouce, to deploy
+    CMD                 the command to run; the "DEPLOY_DEFAULT_CMD" env var can be used to set a default command
 
 OPTIONS
 
-    -s, --source        optional, defaults to cwd; the dir from which to install
-    -t, --target        optional, defaults to the value of LOCAL_BIN or stow's default, depending on the availability of path related env variables; the dir to which
-                        to install
-    -p, --path          optional; specifies the package as a full path instead of -s [PACKAGE]
-    -u, --uninstall     optional; indicates that packages should be remove
-    -r, --reinstall     optional; indicates that packages should be remove
-    --self              optional; indicates that deploy should be deployed
-    -d, --dry-run       optional; simulate changes based on provided args but make no file system changes
-    -v, --verbose       optional, -v N, N=0..5, defaults to 0; logs progress/status msgs to stderr; higher N means more verbosity
-    -h, --help          optional; display this message
+    -s, --source        optional; defaults to cwd; a path to a file/dir to install
+    -d, --dest          optional, defaults to the value of LOCAL_BIN, depending on the availability of path related env variables; the dir to which to install
+    -p, --pattern       WARN: not implemented; optional, multi-valued; patterns for selecting files to install
+    -n, --name          optional, defaults to -s|--source; the name of the "package" being installed; used for logging
+    -t, --type          optional, defaults to "executable"; the type of file/package being installed; valid values include "exec(utable)" and "lib(rary)"
+    --target            optional; optionally rename exec file or library file/dir to this value; not valid w/ --type exec if -s|--source is a directory
+    --strict            optional; the level w/ which to log validation messages; using "error" will result in failed validations exiting w/ non-zero return codes, i.e.: if files
+                        aren't state appropriate for the provided command (installing files that already exist or cleaning files that don't, etc.)
+
+FLAGS
+
+    --self              if provided, set's -s|--source to this script's path
+    -i, --interactive   if specified, requires confirmation before each state change
+    --dry-run           if provided, no state changes are made
+    -h, --help          display this message
+
+GLOBALS
+
+    DEPLOY_DEFAULT_CMD      sets a default command
+    DEPLOY_STRICT           env var equivalent of --strict
 help
 }
 
 
-PKGS=()
-SRC=""
-SRC_DIR=""
-TGT=""
-MODIFIER=""
-DRY_RUN=""
-VERBOSE=""
+CMD="${DEPLOY_DEFAULT_CMD:-}"
+SOURCE="$(pwd)"
+DEST=""
+PATTERN=()
+NAME=""
+TYPE="executable"
+TARGET=""
 
-[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="deploy"
-[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX=""
+FIND_RESULTS=()
 
-function __set_src() {
-  local path="${1}"
-  SRC="--dir=${path}"
-  SRC_DIR="${path}"
+ERROR_LEVEL="warn"
+ERROR_RC=0
+
+function is_exec() { [[ "${TYPE}" =~ ^exec(utable)?$ ]]; }
+function is_lib() { [[ "${TYPE}" =~ ^lib(rary)?$ ]]; }
+
+function process_strict() {
+    ERROR_LEVEL="${1:-${ERROR_LEVEL}}"
+    validate_one_of "--strict" "$(to_upper "${ERROR_LEVEL}")" "${!PUBLIC_LOG_LEVELS[@]}"
+
+    if [[ "${ERROR_LEVEL}" == "error" ]]; then
+        ERROR_RC=1
+    fi
 }
 
+function process_self() {
+    SOURCE="$(realpath "${BASH_SOURCE[0]}")"
+    NAME="deploy"
+}
+
+function validate_paths() {
+    validate_path "${SOURCE}" "-s|--source" || return 1
+    SOURCE="$(realpath "${SOURCE}")"
+
+    [[ -z "${DEST}" ]] && DEST="${TYPES[${TYPE}]}"
+    dir::exists "${DEST}" || exec::interactive "Create ${DEST}?" "sudo" "mkdir" "${DEST}"
+
+    validate_dir "${DEST}" "-d|--dest" || return 1
+    DEST="$(realpath "${DEST}")"
+}
+
+function validate_target() {
+    if [[ -n "${TARGET}" ]] && is_exec && dir::is "${SOURCE}"; then
+        ulogger error "--target cannot be used w/ -t|--type exec(utable) if -s|--source is a directory"
+        return 1
+    fi
+}
+
+function set_name_if_blank() {
+    [[ -n "${NAME}" ]] && return 0
+
+    local -r source_dir="$(dirname "${SOURCE}")"
+    local -r source_name="$(basename "${SOURCE}")"
+
+    NAME="$(basename "${source_dir}")-${source_name}"
+}
+
+function make_target() {
+    local source="${1}"
+    echo "${DEST}/$(basename "${source}")"
+}
+
+function clean_path() {
+    local source="${1}"
+    local check_exists="${2:-file::exists}"
+    local tgt ; tgt="$(make_target "${source}")"
+
+    [[ -n "${TARGET}" ]] && tgt="$(make_target "${TARGET}")"
+
+    local file_cmd=("rm" "-rf")
+    local verb="Remove" ; local verbing="removing"
+
+    if ! "${check_exists}" "${tgt}"; then
+        StubLogger::log "${ERROR_LEVEL}" "    target does not exist: ${tgt}"
+        return $ERROR_RC
+    fi
+
+    if [[ -L "${tgt}" ]]; then
+        file_cmd=("unlink")
+        verb="Unlink" ; verbing="unlinking"
+    fi
+
+    StubLogger::log info "    ${verbing} ${tgt}"
+    exec::interactive "${verb} $(basename "${tgt}")?" "sudo" "${file_cmd[@]}" "${tgt}"
+}
+
+function find_exec_files() {
+    StubLogger::log debug "finding files to deploy: find ${SOURCE} -type f"
+    readarray -t FIND_RESULTS < <(find "${SOURCE}" -type f)
+    StubLogger::log info "found ${#FIND_RESULTS[@]} exec files to deploy"
+}
+
+function clean_dir__exec() {
+    find_exec_files
+
+    for source in "${FIND_RESULTS[@]}"; do
+        clean_path "${source}" "file::exists"
+    done
+}
+
+function clean_dir() {
+    local -r src_name="$(basename "${SOURCE}")"
+
+    StubLogger::log info "cleaning ${NAME} in ${DEST} as ${TYPE}"
+
+    if is_exec; then
+        ulogger info "cleaning ${src_name} as executable"
+        clean_dir__exec
+    elif is_lib; then
+        ulogger info "cleaning ${src_name} as library"
+        clean_path "${SOURCE}" "dir::exists"
+    else
+        StubLogger::log error "unrecognized -t|--type: ${TYPE}"
+        return 1
+    fi
+}
+
+function do_clean() {
+    if [[ -f "${SOURCE}" ]]; then
+        clean_path "${SOURCE}"
+    elif [[ -d "${SOURCE}" ]]; then
+        clean_dir
+    else
+        StubLogger::log error "-s|--source has unrecognized type: ${SOURCE}"
+        return 1
+    fi
+}
+
+function deploy_file() {
+    local source="${1}"
+
+    local -r src_name="$(basename "${source}")"
+    local tgt ; tgt="$(make_target "${source}")"
+    [[ -n "${TARGET}" ]] && tgt="$(make_target "${TARGET}")"
+
+    if [[ -f "${tgt}" ]]; then
+        StubLogger::log "${ERROR_LEVEL}" "    target already exists: ${tgt}"
+        return $ERROR_RC
+    fi
+
+    StubLogger::log info "    ${VERB}ing ${source}"
+
+    if [[ -n "${TARGET}" ]]; then
+        StubLogger::log debug "    sudo ${FILE_CMD[*]} ${source} ${tgt}"
+        exec::interactive "${VERB} ${src_name}?" "sudo" "${FILE_CMD[@]}" "${source}" "${tgt}"
+    else
+        StubLogger::log debug "    sudo ${FILE_CMD[*]} ${source} ${DEST}"
+        exec::interactive "${VERB} ${src_name}?" "sudo" "${FILE_CMD[@]}" "${source}" "${DEST}"
+    fi
+}
+
+function deploy_dir__exec() {
+    if [[ -n "${TARGET}" ]]; then
+        StubLogger::log error "--target cannot be used when deploying a directory executable"
+        return 1
+    fi
+
+    find_exec_files
+
+    for source in "${FIND_RESULTS[@]}"; do
+        deploy_file "${source}"
+    done
+}
+
+function deploy_dir__lib() {
+    local -r src_name="$(basename "${SOURCE}")"
+    local tgt ; tgt="$(make_target "${SOURCE}")"
+
+    [[ -n "${TARGET}" ]] && tgt="$(make_target "${TARGET}")"
+
+    if [[ -d "${tgt}" ]]; then
+        StubLogger::log "${ERROR_LEVEL}" "target already exists: ${tgt}"
+        return $ERROR_RC
+    fi
+
+    StubLogger::log info "${VERB}ing ${SOURCE}"
+
+    if [[ -n "${TARGET}" ]]; then
+        StubLogger::log debug "sudo ${FILE_CMD[*]} ${SOURCE} ${tgt}"
+        exec::interactive "${VERB} ${src_name}?" "sudo" "${FILE_CMD[@]}" "${SOURCE}" "${tgt}"
+    else
+        StubLogger::log debug "sudo ${FILE_CMD[*]} ${SOURCE} ${DEST}"
+        exec::interactive "${VERB} ${src_name}?" "sudo" "${FILE_CMD[@]}" "${SOURCE}" "${DEST}"
+    fi
+}
+
+function deploy_dir() {
+    if is_exec; then
+        deploy_dir__exec
+    elif is_lib; then
+        deploy_dir__lib
+    else
+        StubLogger::log error "unrecognized -t|--type: ${TYPE}"
+        return 1
+    fi
+}
+
+function deploy() {
+    StubLogger::log info "${VERB}ing ${NAME} to ${DEST} as ${TYPE}"
+
+    if [[ -f "${SOURCE}" ]]; then
+        deploy_file "${SOURCE}"
+    elif [[ -d "${SOURCE}" ]]; then
+        deploy_dir
+    else
+        StubLogger::log error "-s|--source file has unrecognized type: ${SOURCE}"
+        return 1
+    fi
+}
+
+function debug_call() {
+    StubLogger::log debug "deploy ${CMD}\n  -s ${SOURCE}\n  -d ${DEST}\n  -n ${NAME}\n  -t ${TYPE}\n  --target ${TARGET}\n --strict ${ERROR_LEVEL}"
+    StubLogger::log debug "" --no-fmt -s notify
+}
+
+function clean() { do_clean ; }
+function install() { VERB="install" FILE_CMD=("cp" "-r") ; deploy ; }
+function link() { VERB="link" FILE_CMD=("ln" "-s") ; deploy ; }
+
+function cmd::clean() { clean; }
+function cmd::install() { install ; }
+function cmd::link() { link; }
+function cmd::relink() { clean; link; }
+function cmd::reinstall() { clean; install; }
+
+
+[[ -n "${DEPLOY_STRICT+x}" ]] && process_strict "${DEPLOY_STRICT}"
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="deploy"
+
+## arg parsing/processing
+
+LogFlags::process_log_flags "$@" || exit 1
+
 while [[ $# -gt 0 ]]; do
+  # shellcheck disable=SC2034
   case $1 in
     -s|--source)
-      __set_src "${2}"
-      shift
-      shift
-      ;;
-    -t|--target)
-      TGT="${2}"
-      shift
-      shift
-      ;;
-    -p|--path)
-      PKGS=("$(basename "${2}")")
-      __set_src "$(dirname "${2}")"
-      shift
-      shift
-      ;;
-    -u|--uninstall)
-      MODIFIER="--delete"
-      [[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="remove"
-      shift
-      ;;
-    -r|--reinstall)
-      MODIFIER="--restow"
-      shift
-      ;;
+        SOURCE="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -d|--dest)
+        DEST="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -p|--pattern)
+       [[ -n "${2:-}" ]] && PATTERN+=("${2}") ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -n|--name)
+        NAME="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -t|--type)
+        TYPE="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    --target)
+        TARGET="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     --self)
-      PKG="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 || true ; pwd -P)"
-      PKGS=("$(basename "${PKG}")")
-      __set_src "$(dirname "${PKG}")"
-      shift
-      ;;
-    -d|--dry-run)
-      DRY_RUN="--no"
-      shift
-      ;;
-    -v*)
-      VERBOSE="${1}"
-      export ULOGGER_VERBOSE="true"
-      shift
-      ;;
+        process_self ; shift ;;
+    --strict)
+        process_strict "${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -i|--interactive)
+        export INTERACTIVE="true" ; shift ;;
+    --dry-run)
+        export DRY_RUN="true" ; shift ;;
     -h|--help)
-      help
-      exit 0
-      ;;
+        help && exit 0 ;;
+    -q*|-v*)
+        shift ;;
     -*)
-      usage
-      exit 1
-      ;;
+        echo "error: $(usage)" && exit 1 ;;
     *)
-      PKGS+=("${1}")
-      shift
-      ;;
+        CMD="${1}" ; shift ;;
   esac
 done
 
 
-if [[ -z "${TGT}" ]] && [[ -z "${LOCAL_BIN+x}" ]]; then
-    log::warn "-t|--target not provided and LOCAL_BIN not set; falling back to stow default"
-elif [[ -z "${TGT}" ]]; then
-    TGT="${LOCAL_BIN}"
-fi
+validate_one_of "cmd" "${CMD}" "${!CMDS[@]}" || exit 1
 
-if [[ "${#PKGS[@]}" -lt 1 ]]; then
-    log::error "at least one package is required"
-    exit 1
-fi
+# NOTE: set prefix here since it's dependent on CMD
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="${CMD}"
 
-PKGS_STR="$(echo "${PKGS[@]}" | tr " " ", ")"
-log::info "deploying from dir=${SRC_DIR:-.}: ${PKGS_STR}"
+validate_one_of "--type" "${TYPE}" "${!TYPES[@]}" || exit 1
+validate_paths || exit 1
+validate_target || exit 1
 
-# STOW_PKGS=()
-#
-# for PKG in "${PKGS[@]}"; do
-#     if [[ -s "${SRC_DIR}/${PKG}/install.sh" ]]; then
-#         ulogger info "running intall script detected at ${SRC_DIR}/${PKG}"
-#     else
-#     fi
-# done
+set_name_if_blank || exit 1
 
-# shellcheck disable=SC2086
-sudo stow "${SRC}" --target="${TGT}" ${MODIFIER} $DRY_RUN $VERBOSE "${PKGS[@]}"
+"cmd::${CMDS[${CMD}]}" || exit 1
 
