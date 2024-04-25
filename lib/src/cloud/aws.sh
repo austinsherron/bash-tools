@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 source "${LOCAL_LIB}/bash/args/validate.sh"
+source "${LOCAL_LIB}/bash/utils/exec.sh"
 
 
 ### useful constants
@@ -27,8 +28,94 @@ declare -A SVC_BY_QUOTA=(
     ["${AWS_QUOTA_EC2_GPU}"]="${AWS_SVC_EC2}"
 )
 
-### config related utils
+### auth/config related utils
 
+#######################################
+# Gets/sets the active aws profile.
+# Globals:
+#   AWS_PROFILE: reads this to display active profile, updates it to set it
+# Arguments:
+#   profile: optional; the profile to set; omitting profile results in a read operation
+# Outputs:
+#   Writes to stdout the value of AWS_PROFILE, if profile is omitted
+#######################################
+function aws::profile() {
+    local profile="${1:-}"
+
+    if [[ -z "${profile}" ]]; then
+        echo "${AWS_PROFILE}"
+    else
+        export AWS_PROFILE="${profile}"
+    fi
+}
+
+#######################################
+# Displays available aws profiles via "aws configure list-profiles".
+# Outputs:
+#   Outputs of "aws configure list-profiles"
+#######################################
+function aws::profiles() {
+    aws configure list-profiles
+}
+
+#######################################
+# Pipes the output of aws::profiles to fzf.
+# Outputs:
+#   Outputs of "aws::profiles" via fzf
+#   Writes to stdout the selected profile
+#######################################
+function aws::profile::choose() {
+    aws::profiles | fzf
+}
+
+#######################################
+# Initiates sso login via "aws sso login".
+# Arguments:
+#   profile: optional; if omitted, caller is prompted to select a profile via "aws::profile::choose".
+# Outputs:
+#   Outputs of "aws sso login"
+#######################################
+function aws::sso() {
+    local profile="${1:-$(aws::profile::choose)}"
+    aws sso login --profile "${profile}"
+}
+
+#######################################
+# Gets the callers aws auth identity via "aws sts get-caller-identity".
+# Arguments:
+#   profile: optional; if omitted, caller is prompted to select a profile via "aws::profile::choose".
+# Outputs:
+#   Outputs of "aws sts get-caller-identity"
+#######################################
+# shellcheck disable=SC2120
+function aws::whoami() {
+    local profile="${1:-$(aws::profile::choose)}"
+    aws sts get-caller-identity --profile "${profile}"
+}
+
+#######################################
+# Logs the caller in as the provided--or selected--profile and sets it as the active aws profile.
+# Arguments:
+#   profile: optional; if omitted, caller is prompted to select a profile via "aws::profile::choose".
+# Outputs:
+#   Outputs of "aws::profiles" via fzf
+#   Outputs of "aws::sso"
+#######################################
+function aws::profile::assume() {
+    local -r profile="${1:-$(aws::profile::choose)}"
+
+    test -z "$(aws::whoami "${profile}" 2> /dev/null)" && aws::sso "${profile}"
+
+    aws::profile "${profile}"
+}
+
+#######################################
+# Gets/sets the active aws region.
+# Arguments:
+#   region: optional; the region to set; omitting region results in a read operation
+# Outputs:
+#   Writes to stdout the active aws region, if region is omitted
+#######################################
 # shellcheck disable=SC2120
 function aws::region() {
     local region="${1:-}"
@@ -72,22 +159,17 @@ function aws::quota() {
     local svc_code="${1}"
     local quota_code="${2}"
     local field="${3}"
-    local region="${4:-}"
-    local selector
+    local region="${4:-$(aws::region)}"
+    local selector="."
 
     [[ "${svc_code}" == "-" ]] && [[ -n "${SVC_BY_QUOTA[${quota_code}]+x}" ]] && svc_code="${SVC_BY_QUOTA[${quota_code}]}"
     [[ "${field}" != "-" ]] && selector=".Quotas[].${field}"
-    [[ -z "${region}" ]] && region="$(aws::region)"
 
     validate_required svc_code "${svc_code}" || return 1
     validate_required quota_code "${quota_code}" || return 1
     validate_required region "${region}" || return 1
 
-    if [[ -n "${selector}" ]]; then
-        aws service-quotas list-service-quotas --service-code "${svc_code}" --quota-code "${quota_code}" --region "${region}" | jq -r "${selector}"
-    else
-        aws service-quotas list-service-quotas --service-code "${svc_code}" --quota-code "${quota_code}" --region "${region}"
-    fi
+    aws service-quotas list-service-quotas --service-code "${svc_code}" --quota-code "${quota_code}" --region "${region}" | jq -r "${selector}"
 }
 
 #######################################
@@ -124,5 +206,47 @@ function aws::quotas() {
     for region in "${regions[@]}" ; do
         echo "${region}=$(aws::quota "${svc_code}" "${quota_code}" "${field}" "${region}")" || return 1
     done
+}
+
+### ecr related utils
+
+#######################################
+# Displays information about/values from ecr repos via "aws ecr describe-repositories".
+# Arguments:
+#   repo: optional; if omitted, queries all ecr repos in the provided/configured region
+#   field: optional, excluded via "-"; the repo field to query; if omitted, displays the entire repo info block
+#   region: optional, defaults to region set in configuration
+# Outputs:
+#   Args validation error messages
+#   Outputs of "aws ecr describe-repositories"
+# Returns:
+#   1 if arguments aren't valid
+#######################################
+function ecr::repos() {
+    local repo="${1}"
+    local field="${2}"
+    local region="${3:-$(aws::region)}"
+
+    local cmd=("aws" "ecr" "describe-repositories")
+    local selector="."
+
+    [[ "${repo}" != "-" ]] && cmd+=("--repository-name" "${repo}")
+    [[ "${field}" != "-" ]] && selector=".repositories[].${field}"
+
+    validate_required region "${region}" || return 1
+    cmd+=("--region" "${region}")
+
+    "${cmd[@]}" | jq -r "${selector}"
+}
+
+#######################################
+# Pipes to fzf the names of all ecr repos of in the provided/configured region.
+# Outputs:
+#   Outputs all ecr repos of in the provided/configured region via fzf
+#   Writes to stdout the selected repo name
+#######################################
+function ecr::choose_repo() {
+    local region="${1:-$(aws::region)}"
+    ecr::repos - repositoryName "${region}" | fzf
 }
 
