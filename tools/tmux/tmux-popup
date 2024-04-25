@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-source "${LOCAL_LIB}/bash/args/validate.sh"
+source "${BASH_LIB}/args/validate.sh"
 
 
 USAGE="tmux-popup [[--width w] [--height h]]|[--dim [ww]x[hh]] [--dir path]"

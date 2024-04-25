@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source "${LOCAL_LIB}/bash/args/validate.sh"
+source "${BASH_LIB}/args/validate.sh"
 
 
 #######################################

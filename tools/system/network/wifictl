@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-source "${LOCAL_LIB}/bash/utils.sh"
+source "${BASH_LIB}/utils.sh"
 
 
 OS="$(os-type)"

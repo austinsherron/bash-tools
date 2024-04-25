@@ -6,14 +6,16 @@ export VALIDATE_USE_ULOGGER=""
 export EXEC_USE_ULOGGER=""
 
 # NOTE: import src files, as this script may be called before lib installation
-source "${BASH_TOOLS}/lib/src/args/check.sh"
-source "${BASH_TOOLS}/lib/src/args/validate.sh"
-source "${BASH_TOOLS}/lib/src/log/level.sh"
-source "${BASH_TOOLS}/lib/src/log/stub.sh"
-source "${BASH_TOOLS}/lib/src/log/utils.sh"
-source "${BASH_TOOLS}/lib/src/utils/exec.sh"
-source "${BASH_TOOLS}/lib/src/utils/file.sh"
-source "${BASH_TOOLS}/lib/src/utils.sh"
+export BASH_LIB="${BASH_TOOLS}/lib/src"
+
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/log/level.sh"
+source "${BASH_LIB}/log/stub.sh"
+source "${BASH_LIB}/log/utils.sh"
+source "${BASH_LIB}/utils/exec.sh"
+source "${BASH_LIB}/utils/file.sh"
+source "${BASH_LIB}/utils.sh"
 
 
 declare -A CMDS=(

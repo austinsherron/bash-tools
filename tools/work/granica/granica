@@ -2,9 +2,9 @@
 
 set -Eeuo pipefail
 
-source "${LOCAL_LIB}/bash/args/check.sh"
-source "${LOCAL_LIB}/bash/args/validate.sh"
-source "${LOCAL_LIB}/bash/data.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/data.sh"
 
 
 declare -A CMDS=(

@@ -3,11 +3,11 @@
 set -Eeuo pipefail
 
 export VALIDATE_USE_ULOGGER=""
-source "${LOCAL_LIB}/bash/args/check.sh"
-source "${LOCAL_LIB}/bash/args/validate.sh"
-source "${LOCAL_LIB}/bash/data/yaml.sh"
-source "${LOCAL_LIB}/bash/db/aws/dynamo.sh"
-source "${LOCAL_LIB}/bash/utils.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/data/yaml.sh"
+source "${BASH_LIB}/db/aws/dynamo.sh"
+source "${BASH_LIB}/utils.sh"
 
 
 USAGE="granica-autoupdate [directive] [-v query|version] [-c customer] [--raw] [--config path] [--dry-run]"

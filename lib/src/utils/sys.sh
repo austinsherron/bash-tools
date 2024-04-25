@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source "${LOCAL_LIB}/bash/log/stub.sh"
+source "${BASH_LIB}/log/stub.sh"
 
 
 #######################################

@@ -2,9 +2,9 @@
 
 set -Eeuo pipefail
 
-source "${LOCAL_LIB}/bash/core/str.sh"
-source "${LOCAL_LIB}/bash/utils.sh"
-source "${LOCAL_LIB}/bash/utils/file.sh"
+source "${BASH_LIB}/core/str.sh"
+source "${BASH_LIB}/utils.sh"
+source "${BASH_LIB}/utils/file.sh"
 
 
 declare -A STRATEGIES=(

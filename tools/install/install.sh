@@ -11,6 +11,7 @@ set -Eeuo pipefail
 INSTALL_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 || true ; pwd -P)"
 TOOLS_ROOT="$(dirname "${INSTALL_DIR}")"
 BASH_TOOLS="$(dirname "$(dirname "${INSTALL_DIR}")")"
+BASH_LIB="${BASH_TOOLS}/lib/src"
 ULOG_ROOT="${TOOLS_ROOT}/log"
 
 source "${BASH_TOOLS}/lib/src/utils/sys.sh"
@@ -18,6 +19,7 @@ source "${BASH_TOOLS}/lib/src/utils/sys.sh"
 export INSTALL_DIR
 export TOOLS_ROOT
 export BASH_TOOLS
+export BASH_LIB
 export ULOG_ROOT
 
 # globals for deploy
@@ -33,7 +35,7 @@ function deploy_deployer() {
 }
 
 function install_bash_lib() {
-    deploy -s "${BASH_TOOLS}/lib/src" -d "${LOCAL_LIB}/bash" -n bash-lib -t lib
+    deploy -s "${BASH_TOOLS}/lib/src" -d "${LOCAL_LIB}" -n bash-lib -t lib --target bash
 }
 
 function deploy_ulogger() {

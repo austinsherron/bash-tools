@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 # NOTE: import src files, as these utils may be used before lib installation
-source "${BASH_TOOLS}/lib/src/args/check.sh"
-source "${BASH_TOOLS}/lib/src/log/level.sh"
-source "${BASH_TOOLS}/lib/src/utils/env.sh"
-source "${BASH_TOOLS}/lib/src/utils.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/log/level.sh"
+source "${BASH_LIB}/utils/env.sh"
+source "${BASH_LIB}/utils.sh"
 
 
 function __current_level() {
