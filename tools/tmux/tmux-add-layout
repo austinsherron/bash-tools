@@ -2,8 +2,12 @@
 
 set -Eeuo pipefail
 
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/log/utils.sh"
+source "${BASH_LIB}/utils/exec.sh"
 
-USAGE="tmux-add-layout -l layout [-t window] [-s path]"
+
+USAGE="tmux-add-layout layout [-t window] [-s path]"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -21,15 +25,20 @@ USAGE
 
     ${USAGE}
 
+POSITIONAL ARGUMENTS
+
+    LAYOUT              the layout's identifier; the combination of identifier, window dimensions, and pane count should uniquely identify a layout
+
 OPTIONS
 
-    -l, --layout        the layout's identifier; the combination of identifier, window dimensions, and pane count should uniquely identify a layout
     -t, --target        optional, defaults to the active window; the name of the window for which to add a layout
-    -s, --specs         optional, default to "\${HOME}/.config/tmux/layouts"; must be file path or "stdout"; the file to which to write the new layout
-                        specifications; using "-s|--specs stdout" will write the layout to stdout
-    --force             optional; if specified, forces resize even if pane dimensions match those in the layout spec
-    -v, --verbose       optional; write progress/status messages to stdout
-    --dry-run           optional; indicates that the script should print hypothetical results to the console, but make no state changes
+    -s, --specs         optional, default to "\${HOME}/.config/tmux/layouts"; must be file path or "stdout"; the file to which to write the new layout specifications; using
+                        "-s|--specs stdout" will write the layout to stdout
+
+FLAGS
+
+    --force             if specified, forces resize even if pane dimensions match those in the layout spec
+    -d, --dry-run       indicates that the script should print hypothetical results to the console, but make no state changes
     -h, --help          display this message
 help
 }
@@ -38,58 +47,36 @@ help
 LAYOUT_ID=""
 TARGET="$(tmux display-message -p "#W")"
 SPEC_PATH="${HOME}/.config/tmux/layouts"
-FORCE=""
+COLLISION_ERR_LEVEL="error"
 DRY_RUN=""
 
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="tmux"
 [[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="add"
 
+LogFlags::process_log_flags "$@"
+
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -l|--layout)
-      LAYOUT_ID="$([[ -z "${2+x}" ]] && echo "" || echo "${2}")"
-      shift
-      shift
-      ;;
     -t|--target)
-      TARGET="$([[ -z "${2+x}" ]] && echo "${TARGET}" || echo "${2}")"
-      shift
-      shift
-      ;;
+      TARGET="$([[ -z "${2+x}" ]] && echo "${TARGET}" || echo "${2}")" ; shift ; shift ;;
     -s|--specs)
-      SPEC_PATH="$([[ -z "${2+x}" ]] && echo "${SPEC_PATH}" || echo "${2}")"
-      shift
-      shift
-      ;;
-    -v|--verbose)
-      export ULOGGER_VERBOSE="true"
-      shift
-      ;;
+      SPEC_PATH="$([[ -z "${2+x}" ]] && echo "${SPEC_PATH}" || echo "${2}")" ; shift ; shift ;;
+    -v*|-q*)
+      shift ;;
     --force)
-      FORCE="true"
-      shift
-      ;;
-    --dry-run)
-      DRY_RUN="true"
-      shift
-      ;;
+      COLLISION_ERR_LEVEL="warn" && shift ;;
+    -d|--dry-run)
+      export DRY_RUN="true" && shift ;;
     -h|--help)
-      help
-      exit 0
-      ;;
+      help && exit 0 ;;
+    -*)
+      ulogger error "invalid argument: ${1}" && usage && exit 1 ;;
     *)
-      echo "${1}"
-      usage
-      exit 1
-      ;;
+      LAYOUT_ID="$([[ -z "${1+x}" ]] && echo "" || echo "${1}")" ; shift ;;
   esac
 done
 
-
-if [[ -z "${LAYOUT_ID}" ]]; then
-    ulogger error "-l|--layout is required"
-    exit 1
-fi
+validate_required "-l|--layout" "${LAYOUT_ID}"
 
 # validate target refers to a window
 if [[ -z "$(tmux list-windows -F "#W" | grep "${TARGET}" || true)" ]]; then
@@ -124,24 +111,22 @@ fi
 
 logger info "constructed layout spec='${LAYOUT_SPEC}'"
 SPEC_MATCH="$(grep -v "^#" "${SPEC_PATH}" | grep "^${IDENTIFIER}" || true)"
+[[ -n "${SPEC_MATCH}" ]] && ulogger "${COLLISION_ERR_LEVEL}" "layout already exists for identifier='${IDENTIFIER}'"
 
-if [[ -n "${SPEC_MATCH}" ]] && [[ "${FORCE}" != "true" ]]; then
-    ulogger error "layout already exists for identifier='${IDENTIFIER}'; exiting"
+if [[ "${COLLISION_ERR_LEVEL}" == "error" ]]; then
+    exit 1
+else
+    ulogger info "--force option detected; overwriting layout spec for identifier='${IDENTIFIER}'"
 fi
 
-CMD=""
+CMD=()
 
 if [[ -n "${SPEC_MATCH}" ]]; then
-    CMD="sed -i.bak 's/^${IDENTIFIER}.*$/${LAYOUT_SPEC}/' ${SPEC_PATH}"
+    CMD=("eval" "sed -i.bak 's/^${IDENTIFIER}.*$/${LAYOUT_SPEC}/' ${SPEC_PATH}")
 else
     # NOTE: reconstructing this w/ single quotes around layout to escape special chars
-    CMD="echo ${IDENTIFIER} '${LAYOUT}' ${PANE_DIMENSIONS} >> ${SPEC_PATH}"
+    CMD=("eval" "echo ${IDENTIFIER} '${LAYOUT}' ${PANE_DIMENSIONS} >> ${SPEC_PATH}")
 fi
 
-if [[ "${DRY_RUN}" == "true" ]]; then
-    echo "${CMD}"
-    exit
-fi
-
-eval "${CMD}"
+exec::dryrun "true" "${CMD[@]}"
 
