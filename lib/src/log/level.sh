@@ -4,6 +4,7 @@ export VALIDATE_USE_ULOGGER=""
 source "${BASH_LIB}/args/check.sh"
 source "${BASH_LIB}/args/validate.sh"
 source "${BASH_LIB}/core/str.sh"
+source "${BASH_LIB}/utils/color.sh"
 
 
 declare -A SEVERITIES=(
@@ -29,6 +30,14 @@ declare -A PUBLIC_LOG_LEVELS=(
     [WARN]=3
     [ERROR]=4
 )
+declare -A LEVEL_COLORS=(
+    [TRACE]="${COLOR_BLUE}"
+    [DEBUG]="${COLOR_PURPLE}"
+    [INFO]="${COLOR_YELLOW}"
+    [WARN]="${COLOR_LIGHT_RED}"
+    [ERROR]="${COLOR_RED}"
+    [OFF]="${COLOR_NONE}"
+)
 
 LOG_LEVEL_DEFAULT="WARN"
 
@@ -37,7 +46,7 @@ export LOG_LEVELS
 export PUBLIC_LOG_LEVELS
 export LOG_LEVEL_DEFAULT
 
-function __level() {
+function level() {
     local level="${1}"
     str::upper "$(log-config -f "${level}" -a level)"
 }
@@ -51,7 +60,7 @@ function __level() {
 #   1 otherwise
 #######################################
 function LogLevel::is() {
-    local -r level="$(__level "${1}")"
+    local -r level="$(level "${1}")"
     is_one_of "${level}" "${!LOG_LEVELS[@]}" || return 1
 }
 
@@ -66,7 +75,7 @@ function LogLevel::is() {
 #   1 otherwise
 #######################################
 function LogLevel::validate() {
-    local -r level="$(__level "${1}")"
+    local -r level="$(level "${1}")"
     validate_one_of "level" "${level}" "${!LOG_LEVELS[@]}" || return 1
 }
 
@@ -80,7 +89,7 @@ function LogLevel::validate() {
 #   2 if the provided value isn't any log level
 #######################################
 function LogLevel::is_public() {
-    local -r level="$(__level "${1}")"
+    local -r level="$(level "${1}")"
 
     LogLevel::is "${level}" || return 2
     is_one_of "${level}" "${!PUBLIC_LOG_LEVELS[@]}" || return 1
@@ -98,7 +107,7 @@ function LogLevel::is_public() {
 #   2 if the provided value isn't any log level
 #######################################
 function LogLevel::validate_public() {
-    local -r level="$(__level "${1}")"
+    local -r level="$(level "${1}")"
 
     LogLevel::validate "${level}" || return 2
     validate_one_of "level" "${level}" "${!PUBLIC_LOG_LEVELS[@]}" || return 1
@@ -143,7 +152,7 @@ function LogLevel::validate_severity() {
 #   1 if the provided value isn't a public log level
 #######################################
 function LogLevel::to_severity() {
-    local -r level="$(__level "${1}")"
+    local -r level="$(level "${1}")"
 
     LogLevel::validate "${level}" || return 1
 
@@ -211,14 +220,49 @@ function LogLevel::convert() {
 #   2 if either of the provided log levels are invalid or log_level isn't public
 #######################################
 function LogLevel::should_log() {
-   local log_level="${1}"
-   local current_level="${2}"
+    local log_level="${1}"
+    local current_level="${2}"
 
-   LogLevel::validate_public "${log_level}"
+    LogLevel::validate_public "${log_level}"
 
-   local -r severity="$(LogLevel::to_severity "${log_level}")" || return 2
-   local -r current_severity="$(LogLevel::to_severity "${current_level}")" || return 2
+    local -r severity="$(LogLevel::to_severity "${log_level}")" || return 2
+    local -r current_severity="$(LogLevel::to_severity "${current_level}")" || return 2
 
     [[ ${severity} -ge ${current_severity} ]] && return 0 || return 1
+}
+
+#######################################
+# Formats a log level for inclusion in log file lines.
+# Arguments:
+#   log_level: the log level to format
+# Outputs:
+#   A log level formatted for inclusion in a log file line
+#   Validation error messages to stdout, depending on log config/the VALIDATE_USE_ULOGGER env var
+# Returns:
+#   1 if the provided log level is invalid or not public
+#######################################
+function LogLevel::fmt() {
+    local -r log_level="$(str::upper "${1}")"
+    LogLevel::validate "${log_level}" || return 1
+
+    echo "[${log_level}]"
+}
+
+#######################################
+# Formats a log level for inclusion in stdout log notifications.
+# Arguments:
+#   log_level: the log level to format
+# Outputs:
+#   A log level formatted for inclusion in an stdout log notification
+#   Validation error messages to stdout, depending on log config/the VALIDATE_USE_ULOGGER env var
+# Returns:
+#   1 if the provided log level is invalid or not public
+#######################################
+function LogLevel::fmt_for_notify() {
+    local -r log_level="$(str::upper "${1}")"
+    LogLevel::validate "${log_level}" || return 1
+
+    # str::right_pad "[${log_level}]" 8
+    echo -e "$(color::print "${LEVEL_COLORS[${log_level}]}" "$(LogLevel::fmt "${log_level}")")"
 }
 

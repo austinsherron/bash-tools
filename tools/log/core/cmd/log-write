@@ -3,6 +3,8 @@
 set -Eeuo pipefail
 
 source "${BASH_LIB}/core/str.sh"
+source "${BASH_LIB}/log/level.sh"
+source "${BASH_LIB}/utils/color.sh"
 source "${BASH_LIB}/utils/file.sh"
 
 
@@ -164,10 +166,9 @@ OUT_LINE="${MSGS}"
 
 # format log line, if necessary
 if [[ -z "${NO_FMT}" ]]; then
-    LEVEL="$(str::right_pad "[${LOG_LEVEL}]" 8)"
     PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(str::upper "${PREFIX}")] " || echo "")"
-    LOG_LINE="${LEVEL}${PREFIX}${LOG_LINE} ($(date))"
-    OUT_LINE="${LEVEL}${OUT_LINE}"
+    LOG_LINE="$(LogLevel::fmt "${LOG_LEVEL}") ${PREFIX}${LOG_LINE} ($(date))"
+    OUT_LINE="$(LogLevel::fmt_for_notify "${LOG_LEVEL}") ${OUT_LINE}"
 fi
 
 # write to log file, if necessary
