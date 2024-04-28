@@ -7,7 +7,7 @@ source "${BASH_LIB}/utils/input.sh"
 
 env::default "EXEC_USE_ULOGGER" "true"
 
-function __log_msg() {
+function log_msg() {
     local msg="${1:-}"
 
     if [[ -z "${msg}" ]]; then
@@ -92,7 +92,7 @@ function exec::interaction_trap() {
     local rc=$?
 
     if [[ $rc -eq $CONFIRM_RC_NO_ALL ]]; then
-        __log_msg "\"No to all\" selected; exiting"
+        log_msg "\"No to all\" selected; exiting"
         exit 0
     fi
 }
