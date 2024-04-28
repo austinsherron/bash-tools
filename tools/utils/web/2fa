@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/log/utils.sh"
+
+
+USAGE="2fa 2FA_SOURCE [-c path] [-m path]"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    A script that handles the details of decrypting and extracting tokens from PGP encrypted 2-FA messages. 2-FA messages must be from known sources wit2h configuration
+    entries in this script's config file. The default location of the aforementioned config file is "\${XDG_CONFIG_HOME}/twofa/config.toml". It's entries are of the form:
+
+        [2-fa-source-key]
+        match_type = "2-fa-extraction-type"
+        matcher = "2-fa-token-identifier"
+
+    2-FA extraction types specifiy how tokens are extracted from messages. Valid extraction types are:
+
+        * line - extract a line "n" from 2-FA messages, where the 2-FA token identifier is "n"
+        * pattern - extract the first line that contains "pattern", where the 2-FA token identifier is "pattern" (pattern is removed from the matching line)
+
+    The 2-FA message to be decrypted can read via -m|--message or the clipboard.
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    2FA_SOURCE      a key that maps to a configured 2-FA source
+
+OPTIONS
+
+    -c, --config    an optional path to a 2-FA config file
+    -m, --message   an optional path to an encrypted 2-FA message
+
+FLAGS
+
+    -h, --help      print this message
+help
+}
+
+
+CONFIG_PATH="${XDG_CONFIG_HOME}/twofa/config.toml"
+MSG_PATH=""
+
+MSG_CONTENT=""
+TWO_FA_SRC=""
+TOKEN_IDENTIFIER=""
+
+TOKEN=""
+
+function set_msg_content() {
+    if [[ -n "${MSG_PATH}" && -s "${MSG_PATH}" ]]; then
+        MSG_CONTENT="$(cat "${MSG_PATH}")"
+    else
+        MSG_CONTENT="$(ULOGGER_DISABLED="true" clipctl read)"
+    fi
+}
+
+function validate_msg_content() {
+    [[ -n "${MSG_CONTENT}" ]] && return 0
+
+    local src_mod=""
+
+    [[ -n "${MSG_PATH}" ]] && src_mod="${MSG_PATH} doesn't exist/is empty and "
+    ulogger error "no 2-FA message to decrypt: ${src_mod}your clipboard is empty"
+
+    exit 1
+}
+
+function get_extraction_type() {
+    yq ".${TWO_FA_SRC}.match_type" "${CONFIG_PATH}"
+}
+
+function get_token_identifier() {
+    yq ".${TWO_FA_SRC}.matcher" "${CONFIG_PATH}"
+}
+
+function set_token_identifiers() {
+    TOKEN_EXTRACTION_TYPE="$(get_extraction_type)"
+    TOKEN_IDENTIFIER="$(get_token_identifier)"
+}
+
+function validate_token_identifiers() {
+    validate_required "${TOKEN_EXTRACTION_TYPE}" "unable to find 2-FA token extraction type for \"${TWO_FA_SRC}\" in \"${CONFIG_PATH}\""
+    validate_required "${TOKEN_IDENTIFIER}" "unable to find 2-FA token identifier for \"${TWO_FA_SRC}\" in \"${CONFIG_PATH}\""
+}
+
+function extract_token() {
+    if [[ "${TOKEN_EXTRACTION_TYPE}" == "line" ]]; then
+        TOKEN="$(echo "${MSG_CONTENT}" | gpg -d | sed "${TOKEN_IDENTIFIER}q;d")"
+    elif [[ "${TOKEN_EXTRACTION_TYPE}" == "pattern" ]]; then
+        TOKEN="$("${MSG_CONTENT}" | gpg -d | grep "${TOKEN_IDENTIFIER}" | sed "s/${TOKEN_IDENTIFIER}//" | xargs)"
+    else
+        ulogger error "unrecognized 2-FA token extraction type: ${TOKEN_EXTRACTION_TYPE}"
+        exit 1
+    fi
+}
+
+LogFlags::process_log_flags "$@"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -c|--config)
+      CONFIG_PATH="${2}" ; shift ; shift ;;
+    -m|--message)
+      MSG_PATH="${2}" ; shift ; shift ;;
+    -v*|-q*)
+      shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    -*)
+      ulogger error "unrecognized argument ${1}" && usage && exit 1 ;;
+     *)
+      TWO_FA_SRC="${1}" ; shift ;;
+  esac
+done
+
+
+validate_installed "yq" "clipctl" || exit 1
+validate_required "2fa_source" "${TWO_FA_SRC}" || exit 1
+
+set_msg_content && validate_msg_content || exit 1
+set_token_identifiers && validate_token_identifiers || exit 1
+
+ulogger info "2-FA extraction type=${TOKEN_EXTRACTION_TYPE}, token identifier=${TOKEN_IDENTIFIER}"
+
+extract_token
+
+ulogger info "token='${TOKEN}'"
+ULOGGER_DISABLED="true" clipctl copy "${TOKEN}"
+
