@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/core/str.sh"
+source "${BASH_LIB}/log/utils.sh"
+source "${BASH_LIB}/utils/sys.sh"
+
+
+## constants
+
+declare -A CMDS=(
+    [clear]="clear clipboard"
+    [copy]=" copy content to clipboard"
+    [diff]=" diff clipboard contents"
+    [paste]="write content from clipboard"
+    [read]=" read clipboard contents"
+)
+
+function cmds() {
+    local sep="${1:-|}"
+    join_by "${sep}" "${!CMDS[@]}"
+}
+
+function cmd_descriptions() {
+    # shellcheck disable=SC2207
+    IFS=$'\n' sorted_cmds=($(sort <<<"${!CMDS[*]}")) ; unset IFS
+
+    for cmd in "${sorted_cmds[@]}"; do
+        echo "    ${cmd}       ${CMDS[${cmd}]}"
+    done
+}
+
+## usage/help
+
+USAGE="clipctl cmd [-f path] {flags}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+CMDS
+
+$(cmd_descriptions)
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    CMD
+    CONTENT
+
+OPTIONS
+
+    -f, --file
+
+FLAGS
+
+    -o, --open
+    --force
+    -h, --help      print this message
+help
+}
+
+
+## script globals
+
+COPY=""
+PASTE=""
+
+CMD=""
+CONTENT=()
+OPEN=""
+FILE=""
+FORCE=""
+
+## helpers
+
+function do_clear() {
+    ulogger debug "clearing"
+
+    FILE="/dev/null" do_copy
+}
+
+function do_copy() {
+    ulogger debug "copying"
+
+    if [[ -n "${FILE}" ]]; then
+        test "${FILE}" == "/dev/null" || validate_file "${FILE}" "-f|--file"
+
+        "${COPY}" < "${FILE}"
+    elif [[ "${#CONTENT[@]}" -gt 0 ]]; then
+        echo "${CONTENT[*]}" | "${COPY}"
+    else
+        "${COPY}"
+    fi
+}
+
+function do_diff() {
+    validate_required "-f|--file" "${FILE}"
+    validate_file "${FILE}" "-f|--file"
+
+    ulogger debug "diffing"
+
+    local -r tmp_file="$(mktemp)"
+    "${PASTE}" >| "${tmp_file}"
+    "${DIFF:-diff}" "${tmp_file}" "${FILE}"
+}
+
+function do_paste() {
+    ulogger debug "pasting"
+
+    if test -z "${FILE}"; then
+        "${PASTE}"
+        return 0
+    fi
+
+    if test -n "${FORCE}"; then
+        "${PASTE}" >| "${FILE}"
+    else
+        "${PASTE}" > "${FILE}"
+    fi
+
+    if test -n "${OPEN}"; then
+        "${EDITOR}" "${FILE}"
+    fi
+}
+
+function do_read() {
+    ulogger debug "reading"
+
+    "${PASTE}"
+}
+
+function exec_command() {
+    case "${CMD}" in
+      clear) do_clear ;;
+      copy) do_copy ;;
+      diff) do_diff ;;
+      paste) do_paste ;;
+      read) do_read ;;
+      *) ulogger error "unrecognized command: ${CMD}"
+    esac
+}
+
+function process_positional() {
+    local arg="${1}"
+
+    if [[ -z "${CMD}" ]]; then
+        CMD="${arg}"
+    else
+        CONTENT+=("${arg}")
+    fi
+}
+
+## arg parsing
+
+LogFlags::process_log_flags "$@"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -f|--file)
+      FILE="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -o|--open)
+      OPEN="true" ; shift ;;
+    --force)
+      FORCE="true" ; shift ;;
+    -v*|-q*)
+      shift ;;
+    -d|--dry-run)
+      export DRY_RUN="true" ; shift ;;
+    -h|--help)
+      help && exit 0 ;;
+     -*)
+      ulogger error "unrecognized argument ${1}" && usage && exit 1 ;;
+     *)
+      process_positional "${1}" ; shift ;;
+  esac
+done
+
+
+## validation
+
+validate_required "cmd" "${CMD}"
+validate_one_of "cmd" "${CMD}" "${!CMDS[@]}"
+
+## main
+
+if sys::is_darwin; then
+    COPY="${COPY:-pbcopy}" ; PASTE="${PASTE:-pbpaste}"
+elif sys::is_linux; then
+    # TODO: add linux commands
+    COPY="${COPY:-}" ; PASTE="${PASTE:-}"
+else
+    ulogger error "unrecognized os type: $(sys::os_type)"
+    return 1
+fi
+
+exec_command
+

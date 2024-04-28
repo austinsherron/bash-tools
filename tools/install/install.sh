@@ -49,6 +49,7 @@ function deploy_common() {
     deploy -s "${TOOLS_ROOT}/system/network" -n network
     deploy -s "${TOOLS_ROOT}/system/snapshot" -n snapshot
     deploy -s "${TOOLS_ROOT}/tmux" -n tmux
+    deploy -s "${TOOLS_ROOT}/utils/clipboard" -n clipboard
     deploy -s "${TOOLS_ROOT}/utils/data" -n data-utils
     deploy -s "${TOOLS_ROOT}/utils/shell" -n shell-utils
     deploy -s "${TOOLS_ROOT}/utils/web" -n web-utils
