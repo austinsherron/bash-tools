@@ -8,7 +8,7 @@ source "${BASH_LIB}/utils/env.sh"
 
 env::default "VALIDATE_USE_ULOGGER" "true"
 
-__log_error() {
+log_error() {
     local msg="${1}"
 
     if env::falsy "VALIDATE_USE_ULOGGER" || ! check_installed ulogger; then
@@ -40,7 +40,7 @@ function validate_required() {
     fi
 
     [[ "$(type -t usage)" ]] && msg="${msg}\nusage: $(usage)"
-    __log_error "${msg}"
+    log_error "${msg}"
 
     return 1
 }
@@ -60,7 +60,7 @@ function validate_required_positional() {
     local val="${2}"
 
     if [[ -z "${val}" ]]; then
-        __log_error "${desc} is a required positional param"
+        log_error "${desc} is a required positional param"
         return 1
     fi
 }
@@ -79,7 +79,7 @@ function validate_required_array() {
     local name="${1}" ; shift
 
     if [[ $# -lt 1 ]]; then
-        __log_error "${name} is a required"
+        log_error "${name} is a required"
         return 1
     fi
 }
@@ -104,7 +104,7 @@ function validate_mutually_exclusive() {
     local rname="${4}"
 
     if [[ -n "${l}" ]] && [[ -n "${r}" ]]; then
-        __log_error "${lname} and ${rname} are mutually exclusive"
+        log_error "${lname} and ${rname} are mutually exclusive"
         return 1
     fi
 }
@@ -121,7 +121,7 @@ function validate_mutually_exclusive() {
 #######################################
 function validate_at_least_one() {
     if [[ $(($# % 2)) -ne 0 ]]; then
-        __log_error "validate_one_required takes N pairs: the args to validate and their names/flags"
+        log_error "validate_one_required takes N pairs: the args to validate and their names/flags"
         return 2
     fi
 
@@ -138,7 +138,7 @@ function validate_at_least_one() {
     local names_str
     names_str="$(echo "${names[@]}" | tr ' ' ', ')"
 
-    __log_error "one of ${names_str} is required"
+    log_error "one of ${names_str} is required"
 }
 
 #######################################
@@ -159,7 +159,7 @@ function validate_one_of() {
     is_one_of "${val}" "$@" && return 0
 
     local -r valid_vals_str="$(echo "$@" | tr " " "|")"
-    __log_error "${name} must be one of '${valid_vals_str}', not '${val}'"
+    log_error "${name} must be one of '${valid_vals_str}', not '${val}'"
     return 1
 }
 
@@ -204,7 +204,7 @@ function validate_output_len() {
     readarray -t split < <(echo "${lines}")
 
     if [[ "${#split[@]}" -ne $len ]]; then
-        __log_error "${msg}"
+        log_error "${msg}"
         return 1
     fi
 }
@@ -228,7 +228,7 @@ function validate_num_args() {
     [[ $nactual -eq $nreq ]] && return 0
     [[ $nreq -gt 1 ]] && arg="arguments"
 
-    __log_error "${caller} requires exactly $nreq ${arg} but got $nactual"
+    log_error "${caller} requires exactly $nreq ${arg} but got $nactual"
     return 1
 }
 
@@ -258,7 +258,7 @@ function validate_min_args() {
     fi
 
     local -r arg="$([[ $min -gt 1 ]] && echo "arguments" || echo "argument")"
-    __log_error "${caller} requires ${sign} $min ${arg} but got $nactual"
+    log_error "${caller} requires ${sign} $min ${arg} but got $nactual"
     return 1
 }
 
@@ -277,7 +277,7 @@ function validate_num() {
     local name="${1}" ; local num=$2 ; local cond="${3}"
 
     if [[ "$(($num "${cond}"))" -eq 0 ]]; then
-        __log_error "${name} (${num}) must be ${cond}"
+        log_error "${name} (${num}) must be ${cond}"
         return 1
     fi
 }
@@ -299,12 +299,12 @@ function validate_range() {
     local name="${1}" ; local num=$2 ; local lrange="${3}" ; local urange="${4}"
 
     if [[ "$(($num "${lrange}"))" -eq 0 ]]; then
-        __log_error "${name} (${num}) must be ${lrange}"
+        log_error "${name} (${num}) must be ${lrange}"
         return 1
     fi
 
     if [[ "$(($num "${urange}"))" -eq 0 ]]; then
-        __log_error "${name} (${num}) must be ${lrange} and ${urange}"
+        log_error "${name} (${num}) must be ${lrange} and ${urange}"
         return 1
     fi
 }
@@ -336,7 +336,7 @@ function validate_max_args() {
     fi
 
     local -r arg="$([[ $max -gt 1 ]] && echo "arguments" || echo "argument")"
-    __log_error "${caller} requires ${sign} $max ${arg} but got $nactual"
+    log_error "${caller} requires ${sign} $max ${arg} but got $nactual"
     return 1
 }
 
@@ -355,7 +355,7 @@ function validate_file() {
     local name="${2:-${path}}"
 
     if [[ ! -s "${path}" ]]; then
-        __log_error "${name} must refer to a valid file"
+        log_error "${name} must refer to a valid file"
         return 1
     fi
 }
@@ -394,7 +394,7 @@ function validate_dir() {
     local msg="${3:-"${name} must refer to a valid directory"}"
 
     if [[ ! -d "${path}" ]]; then
-        __log_error "${msg}"
+        log_error "${msg}"
         return 1
     fi
 }
@@ -414,7 +414,7 @@ function validate_path() {
     local name="${2:-${path}}"
 
     if [[ ! -f "${path}" ]] && [[ ! -d "${path}" ]]; then
-        __log_error "${name} must refer to a valid path"
+        log_error "${name} must refer to a valid path"
         return 1
     fi
 }
@@ -436,7 +436,7 @@ function validate_json_key() {
     local desc="${3:-${key}}"
 
     if [[ "$(jq "${key}" "${path}")" == "null" ]]; then
-        __log_error "unable to find ${desc} in json file=${path}"
+        log_error "unable to find ${desc} in json file=${path}"
         return 1
     fi
 }
@@ -458,7 +458,7 @@ function validate_yaml_key() {
     local name="${3:-${key}}"
 
     if [[ "$(yq "${key}" "${path}")" == "null" ]]; then
-        __log_error "unable to find ${name} in yaml file=${path}"
+        log_error "unable to find ${name} in yaml file=${path}"
         return 1
     fi
 }
@@ -480,9 +480,36 @@ function validate_toml_key() {
     local name="${3:-${key}}"
 
     if [[ "$(tq "${path}" "${key}")" == "null" ]]; then
-        __log_error "unable to find ${name} in toml file=${path}"
+        log_error "unable to find ${name} in toml file=${path}"
         return 1
     fi
+}
+
+#######################################
+# Validates the current os matches the provided identifier.
+# Arguments:
+#   os: the valid os
+#   caller: optional; the name of the dependent caller
+# Outputs:
+#   Prints error message to stdout depending on the current log level (see: ulogger -h)
+# Returns:
+#   0 if the current os matches the provided identifier
+#   1 otherwise
+#######################################
+function validate_os() {
+    local os="${1}"
+    local caller="${2:-}"
+
+    local -r this_os="$(sys::os_type)"
+    test "${this_os}" == "${os}" && return 0
+
+    if test -n "${caller}"; then
+        log_error "${caller} requires os=${os}, not ${this_os}"
+    else
+        log_error "os=${os} required, not ${this_os}"
+    fi
+
+    return 1
 }
 
 #######################################
@@ -501,7 +528,7 @@ function validate_installed() {
     check_installed "$@" && return 0
 
     local -r pkgs="$(join_by ", " "$@")"
-    __log_error "${caller} requires that these packages be installed: ${pkgs}"
+    log_error "${caller} requires that these packages be installed: ${pkgs}"
 }
 
 #######################################
@@ -518,7 +545,7 @@ function validate_required_env() {
         local var_name="${1}"
 
         if [[ -z "${!var_name+x}" ]]; then
-            __log_error "env var=${var_name} is not set"
+            log_error "env var=${var_name} is not set"
             return 1
         fi
     done
