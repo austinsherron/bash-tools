@@ -11,7 +11,7 @@ env::default "VALIDATE_USE_ULOGGER" "true"
 log_error() {
     local msg="${1}"
 
-    if env::falsy "VALIDATE_USE_ULOGGER" || ! check_installed ulogger; then
+    if env::falsy "VALIDATE_USE_ULOGGER" || ! check::installed ulogger; then
         echo -e "[ERROR] ${msg}"
     else
         ulogger error "${msg}"
@@ -156,7 +156,7 @@ function validate_one_of() {
     local name="${1}" ; shift
     local val="${1}";  shift
 
-    is_one_of "${val}" "$@" && return 0
+    check::one_of "${val}" "$@" && return 0
 
     local -r valid_vals_str="$(echo "$@" | tr " " "|")"
     log_error "${name} must be one of '${valid_vals_str}', not '${val}'"
@@ -525,7 +525,7 @@ function validate_os() {
 function validate_installed() {
     local caller="${1}" && shift
 
-    check_installed "$@" && return 0
+    check::installed "$@" && return 0
 
     local -r pkgs="$(join_by ", " "$@")"
     log_error "${caller} requires that these packages be installed: ${pkgs}"

@@ -5,7 +5,7 @@ source "${BASH_LIB}/log/level.sh"
 source "${BASH_LIB}/utils/env.sh"
 
 
-function __current_level() {
+function current_level() {
     if env::exists "CURRENT_LOG_LEVEL"; then
         env::get "CURRENT_LOG_LEVEL"
     elif env::exists "DEFAULT_LOG_LEVEL"; then
@@ -15,22 +15,22 @@ function __current_level() {
     fi
 }
 
-function __should_log() {
+function should_log() {
     local level="${1}"
-    local -r current_level="$(__current_level)"
+    local -r current_level="$(current_level)"
 
      LogLevel::should_log "${level}" "${current_level}"
 }
 
-function __do_log() {
+function do_log() {
     local -r level="${1}" ; shift
 
-    if check_installed ulogger; then
+    if check::installed ulogger; then
         ulogger "${level}" "$@"
         return $?
     fi
 
-    { __should_log "${level}" rc=$?; }
+    { should_log "${level}" ; rc=$? ; }
 
     if [[ $rc -gt 1 ]]; then
         # shellcheck disable=SC2086
@@ -57,8 +57,8 @@ function __do_log() {
 #   2 if an unexpected error is encountered
 #######################################
 function StubLogger::log() {
-    local -r level="${1}" ; shift
+    local level="${1}" ; shift
 
-    __do_log "${level}" "$@"
+    do_log "${level}" "$@"
 }
 

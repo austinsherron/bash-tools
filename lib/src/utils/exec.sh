@@ -7,14 +7,14 @@ source "${BASH_LIB}/utils/input.sh"
 
 env::default "EXEC_USE_ULOGGER" "true"
 
-function __log_msg() {
+function log_msg() {
     local msg="${1:-}"
 
     if [[ -z "${msg}" ]]; then
         return 0
     fi
 
-    if env::falsy "EXEC_USE_ULOGGER" || ! check_installed ulogger; then
+    if env::falsy "EXEC_USE_ULOGGER" || ! check::installed ulogger; then
         echo "[INFO] ${msg}"
     else
         ulogger info "${msg}"
@@ -92,7 +92,7 @@ function exec::interaction_trap() {
     local rc=$?
 
     if [[ $rc -eq $CONFIRM_RC_NO_ALL ]]; then
-        __log_msg "\"No to all\" selected; exiting"
+        log_msg "\"No to all\" selected; exiting"
         exit 0
     fi
 }

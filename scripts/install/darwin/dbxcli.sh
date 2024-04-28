@@ -20,7 +20,7 @@ function clean() {
     fi
 }
 
-if check_installed dbxcli; then
+if check::installed dbxcli; then
     ulogger info "dbxcli is already installed"
     clean || exit 1
     exit 0

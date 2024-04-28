@@ -65,7 +65,7 @@ HELP=""
 CONFIG="${XDG_CONFIG_HOME}/granica/config.toml"
 
 function __validate_cmd() {
-    if is_one_of "${CMD}" "${!CMDS[@]}"; then
+    if check::one_of "${CMD}" "${!CMDS[@]}"; then
         return 0
     fi
 
