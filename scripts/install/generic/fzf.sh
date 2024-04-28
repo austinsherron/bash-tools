@@ -27,6 +27,6 @@ if [[ -f "${TGT}/fzf.bash" ]]; then
     ulogger info "fzf is already installed"
 else
     ulogger info "running ${DEST}/install"
-    "${DEST}/install" --xdg --key-bindings --completion --update-rc --no-zsh --no-fish
+    "${DEST}/install" --xdg --key-bindings --completion --update-rc --no-zsh --no-fish | ulogger info -
 fi
 
