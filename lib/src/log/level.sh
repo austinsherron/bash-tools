@@ -61,7 +61,7 @@ function level() {
 #######################################
 function LogLevel::is() {
     local -r level="$(level "${1}")"
-    is_one_of "${level}" "${!LOG_LEVELS[@]}" || return 1
+    check::one_of "${level}" "${!LOG_LEVELS[@]}" || return 1
 }
 
 #######################################
@@ -92,7 +92,7 @@ function LogLevel::is_public() {
     local -r level="$(level "${1}")"
 
     LogLevel::is "${level}" || return 2
-    is_one_of "${level}" "${!PUBLIC_LOG_LEVELS[@]}" || return 1
+    check::one_of "${level}" "${!PUBLIC_LOG_LEVELS[@]}" || return 1
 }
 
 #######################################
@@ -123,7 +123,7 @@ function LogLevel::validate_public() {
 #######################################
 function LogLevel::is_severity() {
     local -r severity=$1
-    is_one_of "${severity}" "${!SEVERITIES[@]}" || return 1
+    check::one_of "${severity}" "${!SEVERITIES[@]}" || return 1
 }
 
 #######################################

@@ -25,7 +25,7 @@ function __should_log() {
 function __do_log() {
     local -r level="${1}" ; shift
 
-    if check_installed ulogger; then
+    if check::installed ulogger; then
         ulogger "${level}" "$@"
         return $?
     fi

@@ -9,7 +9,7 @@ source "${BASH_LIB}/utils/sys.sh"
 OS="$(sys::os_type)"
 MGR="${OS}-pkgmgr"
 
-if ! check_installed "${MGR}"; then
+if ! check::installed "${MGR}"; then
     ulogger error "no known package manager for os=${OS} (pkgmgr=${MGR})"
     exit 1
 fi

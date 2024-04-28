@@ -14,7 +14,7 @@ function __log_msg() {
         return 0
     fi
 
-    if env::falsy "EXEC_USE_ULOGGER" || ! check_installed ulogger; then
+    if env::falsy "EXEC_USE_ULOGGER" || ! check::installed ulogger; then
         echo "[INFO] ${msg}"
     else
         ulogger info "${msg}"

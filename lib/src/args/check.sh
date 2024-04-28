@@ -9,7 +9,7 @@
 # Returns:
 #   0 if the provided value is a member of the set of valid values, 1 otherwise
 #######################################
-function is_one_of() {
+function check::one_of() {
     local valid_vals=()
     local val="${1}"
 
@@ -30,7 +30,7 @@ function is_one_of() {
 # Returns:
 #   0 if all executables are installed, 1 otherwise
 #######################################
-function check_installed() {
+function check::installed() {
     while [[ $# -gt 0 ]]; do
         local pkg="${1}" && shift
         ! which "${pkg}" &> /dev/null && return 1
@@ -46,7 +46,7 @@ function check_installed() {
 # Returns:
 #   0 if the provided value is empty, 1 otherwise
 #######################################
-function is_empty() {
+function check::empty() {
     local val="${1}"
 
     if [[ -z "${val}" ]]; then
@@ -63,9 +63,9 @@ function is_empty() {
 # Returns:
 #   0 if all values are empty, 1 otherwise
 #######################################
-function all_empty() {
+function check::all_empty() {
     while [[ $# -gt 0 ]]; do
-        if ! is_empty "${1}"; then return 1 ; fi
+        if ! check::empty "${1}"; then return 1 ; fi
         shift
     done
 

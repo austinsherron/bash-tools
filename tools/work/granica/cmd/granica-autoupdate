@@ -129,7 +129,7 @@ function __set_version() {
 }
 
 function __set_directive() {
-    if [[ -n "${DIRECTIVE}" ]] && is_one_of "${DIRECTIVE}" "${!DIRECTIVES[@]}"; then
+    if [[ -n "${DIRECTIVE}" ]] && check::one_of "${DIRECTIVE}" "${!DIRECTIVES[@]}"; then
         DIRECTIVE="${DIRECTIVES[${DIRECTIVE}]}"
         return 0
     elif [[ -z "${DIRECTIVE}" ]]; then

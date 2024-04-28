@@ -85,7 +85,7 @@ if parse::is_help_flag "${FIRST}"; then
     help && exit 0
 fi
 
-if is_one_of "${FIRST}" "${!CMDS[@]}"; then
+if check::one_of "${FIRST}" "${!CMDS[@]}"; then
     CMD="${FIRST}" ; shift
 elif [[ -n "${FIRST}" ]] && ! LogLevel::is_public "${FIRST}"; then
     echo "[ERROR] unrecognized command: ${FIRST}"

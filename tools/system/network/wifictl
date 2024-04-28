@@ -9,7 +9,7 @@ source "${BASH_LIB}/utils/sys.sh"
 OS="$(sys::os_type)"
 CTL="${OS}-wifictl"
 
-if ! check_installed "${CTL}"; then
+if ! check::installed "${CTL}"; then
     ulogger error "no known wifictl for os=${OS} (wifictl=${CTL})"
     exit 1
 fi
