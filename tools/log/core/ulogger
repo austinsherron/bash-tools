@@ -2,10 +2,7 @@
 
 set -Eeuo pipefail
 
-
-if [[ -n "$(log-env -r disabled -v)" ]] || [[ -n "$(log-config -f disabled)" ]]; then
-    exit 0
-fi
+[[ -n "$(log-env -r disabled -v)" || -n "$(log-config -f disabled)" ]] && exit 0
 
 source "${BASH_LIB}/args/check.sh"
 source "${BASH_LIB}/args/parse.sh"
@@ -30,12 +27,12 @@ declare -A CMDS=(
     [blank]="    log a blank line to stdout"
 )
 
-function __cmds() {
+function cmds() {
     local sep="${1:-|}"
     echo "${!CMDS[@]}" | tr " " "${sep}"
 }
 
-function __cmd_descriptions() {
+function cmd_descriptions() {
     # shellcheck disable=SC2207
     IFS=$'\n' sorted_cmds=($(sort <<<"${!CMDS[*]}")) ; unset IFS
 
@@ -58,11 +55,19 @@ DESCRIPTION
 
 CMDS
 
-$(__cmd_descriptions)
+$(cmd_descriptions)
 
 USAGE
 
     ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    CMD             optional, defaults to "write"; the ulogger command to execute
+
+FLAGS
+
+    -h, --help      display this message
 help
 }
 

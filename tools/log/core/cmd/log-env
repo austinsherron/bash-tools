@@ -32,7 +32,7 @@ declare -A VAR_DESCRIPTIONS=(
     [verbose]="  env: ULOGGER_VERBOSE; note: DEPRECATED; use ULOGGER_LEVEL_XFM"
 )
 
-function __var_descriptions() {
+function var_descriptions() {
     for var in "${!VAR_DESCRIPTIONS[@]}"; do
         local desc="${VAR_DESCRIPTIONS[${var}]}"
         echo "        ${var}        ${desc}"
@@ -46,7 +46,7 @@ DESCRIPTION
     Utility for reading/setting ulogger environment variables. This script recognizes following variables:
 
         all              -r|--read, -c|--clear only - read/clear all env vars
-$(__var_descriptions)
+$(var_descriptions)
 
     Note: due to the nature of setting environment variables via scripts/commands, the --set flag should be used w/ an "eval" statement to actually update env vars in the caller's
     shell. For example:
@@ -59,15 +59,28 @@ USAGE
 
 OPTIONS
 
-    -r, --read          optional, multi-valued, defaults to "all" if arg is omitted; specify vars to read; values are written to stdout in the form "var_name=value", unless --values is specified
+    -r, --read          optional, multi-valued, defaults to "all" if arg is omitted; specify vars to read; values are written to stdout in the form "var_name=value", unless -v|--values is specified
     -s, --set           optional, multi-valued; specify vars to set in the following format: var_name=value
     -c, --clear         optional, multi-valued; specify vars to clear (i.e.: unset)
 
 FLAGS
 
-    -v, --values        optional; used w/ -r|--read; if provided, only write values to stdout, instead of "var_name=value"
-    -f|--force          optional; used w/ -s|--set; if provided, overwrite existing environment values
-    -h, --help          optional; display this message
+    -v, --values        used w/ -r|--read; if provided, only write values to stdout, instead of "var_name=value"
+    -f|--force          used w/ -s|--set; if provided, overwrite existing environment values
+    -h, --help          display this message
+
+ALIASES
+
+     Env var names can be aliased by adding a block of following form to the ulogger config file:
+
+        [alias.env]
+        alias_name = "[env-var-name]"
+
+    More concretely:
+
+        [alias.env]
+        pfx = "prefix"
+        volume = "level_xfm"
 help
 }
 
@@ -78,8 +91,8 @@ declare -A SET=()
 FORCE=""
 CLEAR=()
 
-function __process_read() {
-    local key="${1:-all}"
+function process_read() {
+    local -r key="$(log-config -f "${1:-all}" -a env)"
 
     if [[ "${key}" == "all" ]]; then
         READ=("${VARS[@]}")
@@ -89,7 +102,7 @@ function __process_read() {
     fi
 }
 
-function __process_set() {
+function process_set() {
     local var_str="${1:-}"
 
     if [[ ! "${var_str}" =~ [^[:space:]]+=[^[:space:]]+ ]]; then
@@ -97,7 +110,7 @@ function __process_set() {
         return 1
     fi
 
-    local key="${var_str%=*}"
+    local -r key="$(log-config -f "${var_str%=*}" -a env)"
     local val="${var_str#*=}"
 
     validate_one_of "env var" "${key}" "${!VARS[@]}" || return 1
@@ -106,8 +119,8 @@ function __process_set() {
     SET["${var_name}"]+="${val}"
 }
 
-function __process_clear() {
-    local key="${1:-1}"
+function process_clear() {
+    local -r key="$(log-config -f "${1:-1}" -a env)"
 
     if [[ "${key}" == "all" ]]; then
         CLEAR=("${VARS[@]}")
@@ -117,7 +130,7 @@ function __process_clear() {
     fi
 }
 
-function __read_var() {
+function read_var() {
     local var="${1}"
 
     [[ -z "${VALUES}" ]] && echo -n "${var}=\""
@@ -128,13 +141,13 @@ function __read_var() {
     return 0
 }
 
-function __handle_read() {
+function handle_read() {
     for var in "${READ[@]}"; do
-        __read_var "${var}" || return 1
+        read_var "${var}" || return 1
     done
 }
 
-function __set_var() {
+function set_var() {
     local var="${1}"
     local val="${2}"
 
@@ -143,14 +156,14 @@ function __set_var() {
     fi
 }
 
-function __handle_set() {
+function handle_set() {
     for var in "${!SET[@]}"; do
         val="${SET[${var}]}"
-        __set_var "${var}" "${val}" || return 1
+        set_var "${var}" "${val}" || return 1
     done
 }
 
-function __clear_var() {
+function clear_var() {
     local var="${1}"
 
     if [[ -n "${!var+x}" ]]; then
@@ -158,35 +171,35 @@ function __clear_var() {
     fi
 }
 
-function __handle_clear() {
+function handle_clear() {
     for var in "${CLEAR[@]}"; do
-        __clear_var "${var}" || return 1
+        clear_var "${var}" || return 1
     done
 }
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -r|--read )
-        __process_read "${2:-}" || exit 1 ; [[ -n "${2:-}" ]] && shift ; shift ;;
+      process_read "${2:-}" || exit 1 ; [[ -n "${2:-}" ]] && shift ; shift ;;
     -v|--values)
-        VALUES="true" ; shift ;;
+      VALUES="true" ; shift ;;
     -s|--set)
-        __process_set "${2:-}" || exit 1 ; shift ; shift ;;
+      process_set "${2:-}" || exit 1 ; shift ; shift ;;
     -f|--force)
-        FORCE="true" ; shift ;;
+      FORCE="true" ; shift ;;
     -c|--clear)
-        __process_clear "${2:-}" || exit 1 ; shift ; shift ;;
+      process_clear "${2:-}" || exit 1 ; shift ; shift ;;
     -h|--help)
-        help && exit 0 ;;
+      help && exit 0 ;;
     *)
-        "error: $(usage)" && exit 1 ;;
+      echo "error: unrecognized argument: ${1}" && usage && exit 1 ;;
   esac
 done
 
 
-__handle_read || exit 1
-__handle_set || exit 1
-__handle_clear || exit 1
+handle_read || exit 1
+handle_set || exit 1
+handle_clear || exit 1
 
 exit 0
 

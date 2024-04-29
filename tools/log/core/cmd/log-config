@@ -25,33 +25,33 @@ declare -A FIELDS=(
 )
 
 declare -A FIELD_ACTIONS=(
-    [level]="__get_level"
-    [path]="__get_path"
-    [dir]="__get_dir"
-    [type]="__get_type"
-    [root]="__get_root"
-    [disabled]="__get_disabled"
-    [config]="__get_config"
-    [pager.list]="__get_pager"
-    [pager.tree]="__get_pager"
+    [level]="get_level"
+    [path]="get_path"
+    [dir]="get_dir"
+    [type]="get_type"
+    [root]="get_root"
+    [disabled]="get_disabled"
+    [config]="get_config"
+    [pager.list]="get_pager"
+    [pager.tree]="get_pager"
 )
 
-function __fields() {
+function fields() {
     local sep="${1:-|}"
     str::join "${sep}" "${!FIELDS[@]}"
 }
 
-function __field_descriptions() {
+function field_descriptions() {
     for field in "${!FIELDS[@]}"; do
         echo "       * ${field} - ${FIELDS[${field}]}"
     done
 }
 
-function __query_types() {
+function query_types() {
     echo "${!QUERY_TYPES[@]}" | tr " " "|"
 }
 
-USAGE="log-config [-f field] [-q $(__query_types)] [-t type] [-c path] [-e]"
+USAGE="log-config [-f field] [-q $(query_types)] [-t type] [-c path] [-e]"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -72,7 +72,7 @@ DESCRIPTION
 
     Config fields available for reading via -f include:
 
-$(__field_descriptions)
+$(field_descriptions)
 
 ALIASES
 
@@ -96,13 +96,16 @@ USAGE
 
 OPTIONS
 
-    -f, --field     optional, required if -q|--query isn't specified; the field to read from config; valid values: $(__fields ", ")
-    -q, --query     optional, required if -f|--field isn't specified; writes to stdout the config block of the provided type; valid values: $(__query_types ", ")
+    -f, --field     optional, required if -q|--query isn't specified; the field to read from config; valid values: $(fields ", ")
+    -q, --query     optional, required if -f|--field isn't specified; writes to stdout the config block of the provided type; valid values: $(query_types ", ")
     -t, --type      optional; the logger type for which config is being read; can also be specified via $\ULOGGER_TYPE
     -a, --alias     optional; a type of alias for which to query the provided selector; see -a|--alias usage notes above
     -c, --config    optional; a path to a file from which to read user ulogger config
-    -e, --edit      optional; if provided, opens the ulogger config file in an editor (configured via \$EDITOR)
-    -h, --help      optional; display this message
+
+FLAGS
+
+    -e, --edit      if provided, opens the ulogger config file in an editor (configured via \$EDITOR)
+    -h, --help      display this message
 help
 }
 
@@ -115,6 +118,193 @@ EDIT=""
 
 CONFIG_PATH="${XDG_CONFIG_HOME}/ulogger/config.toml"
 DEFAULT_CONFIG_PATH="${TOOLS_ROOT}/log/internal/default.toml"
+
+function get_log_level_from_env() {
+    if [[ -n "${CURRENT_LOG_LEVEL+x}" ]]; then
+        echo "${CURRENT_LOG_LEVEL}"
+    elif [[ -n "${DEFAULT_LOG_LEVEL+x}" ]]; then
+        echo "${DEFAULT_LOG_LEVEL}"
+    else
+        echo ""
+    fi
+}
+
+function get_default_type_from_env() {
+    [[ -n "${DEFAULT_LOG_TYPE+x}" ]] && echo "${DEFAULT_LOG_TYPE}" || echo ""
+}
+
+function get_user_config() {
+    tq "${CONFIG_PATH}" -s | jq
+}
+
+function get_default_config() {
+    tq "${DEFAULT_CONFIG_PATH}" -s | jq
+}
+
+function get_from_config_file() {
+    local path="${1}" ; shift
+
+    local -r val="$(yq "$@" "${path}")"
+
+    if [[ "${val}" == "null" ]]; then
+        echo ""
+    else
+        echo "${val}"
+    fi
+}
+
+function get_from_default_config() {
+    local field="${1}"
+    get_from_config_file "${DEFAULT_CONFIG_PATH}" "${field}"
+}
+
+function get_from_user_config() {
+    local field="${1}"
+    get_from_config_file "${CONFIG_PATH}" "${field}"
+}
+
+function get_from_config() {
+    local field="${1}"
+    local -r value="$(get_from_user_config "${field}")"
+
+    if [[ -z "${value}" ]]; then
+        get_from_default_config "${field}"
+    else
+        echo "${value}"
+    fi
+}
+
+function default_type() {
+    local -r default_type="$(get_from_config .type)"
+    [[ -z "${default_type}" ]] && get_default_type_from_env
+    echo "${default_type}"
+}
+
+function set_log_type() {
+    if [[ -z "${TYPE}" ]]; then
+        TYPE="$(default_type)"
+    fi
+
+    if [[ -z "${TYPE}" ]]; then
+        echo "[ERROR] unable to determine logger type from config"
+        return 1
+    fi
+}
+
+function log_root() {
+    local log_root=""
+
+    [[ -z "${log_root}" ]] && log_root="$(get_from_config .root)"
+    [[ -z "${log_root}" ]] && log_root="${LOG_ROOT:-}"
+    [[ -n "${log_root}" ]] && echo "${log_root}" && return 0
+
+    echo "[ERROR] unable to determine log root from config" && exit 1
+}
+
+function current_log_level() {
+    local level
+
+    level="$(get_from_config ".${TYPE}.level")"
+    [[ -z "${level}" ]] && level="$(get_from_config .level.current)"
+    [[ -z "${level}" ]] && level="$(get_from_config .level.default)"
+    [[ -z "${level}" ]] && level="$(get_log_level_from_env)"
+    [[ -n "${level}" ]] && echo "${level}" && return 0
+
+    echo "[ERROR] unable to determine current log level from config" && exit 1
+}
+
+function get_type_root() {
+    get_from_config ".${TYPE}.directory"
+}
+
+function get_type_file() {
+    local -r ext="$(get_from_config ".${TYPE}.extension")"
+    local -r type_file="$(get_from_config ".${TYPE}.file")"
+    echo "${type_file:-${TYPE}}.${ext:-log}"
+}
+
+function get_type_dir_path() {
+    local path_parts=()
+
+    path_parts+=("$(log_root)")
+    path_parts+=("$(get_type_root)")
+
+    file::make_path "${path_parts[@]}"
+}
+
+function get_full_type_path() {
+    local path_parts=()
+    path_parts+=("$(get_type_dir_path)")
+    path_parts+=("$(get_type_file)")
+
+    file::make_path "${path_parts[@]}"
+}
+
+function get_disabled_from_config() {
+    local disabled=""
+
+    disabled="$(get_from_config .disabled)"
+    [[ -z "${disabled}" ]] && disabled="$(get_from_config ".${TYPE}.disabled")"
+    [[ -z "${disabled}" ]] && disabled="$(env::get "ULOGGER_DISABLED")"
+
+    echo "${disabled}"
+}
+
+function get_pager_from_env() {
+    local pager_type="${1}"
+    local -r pager_var="ULOGGER_$(str::upper "${pager_type}")_PAGER"
+
+    if [[ -n "${!pager_var+x}" ]]; then
+        echo "${!pager_var}"
+    fi
+}
+
+function get_pager_from_config() {
+    local pager_type="${FIELD##pager.}"
+    local pager
+
+    pager="$(get_from_user_config ".${FIELD}")"
+    [[ -z "${pager}" ]] && pager="$(get_pager_from_env "${pager_type}")"
+    [[ -z "${pager}" ]] && pager="$(get_from_default_config  ".${FIELD}")"
+    [[ -n "${pager}" ]] && echo "${pager}" && return 0
+
+    echo "[ERROR] unable to find ${pager_type} pager" && exit 1
+}
+
+function handle_query() {
+    if [[ -z "${QUERY_TYPES[${QUERY}]}" ]]; then
+        echo "-q|--query must be one of '$(query_types)' not '${QUERY}'"
+        return 1
+    fi
+
+    "__get_${QUERY}_config" || return 1
+}
+
+function handle_alias() {
+    local -r value="$(get_from_config ".alias.${ALIAS}.${FIELD}")" || return 1
+
+    [[ -n "${value}" ]] && echo "${value}" && return 0
+
+    echo "${FIELD}"
+}
+
+function handle_field() {
+    if [[ -z "${ALIAS}" ]]; then
+        validate_one_of "-f|--field" "${FIELD}" "${!FIELDS[@]}" || return 1
+        "${FIELD_ACTIONS[${FIELD}]}" || return 1
+    else
+        handle_alias || return 1
+    fi
+}
+
+function get_level() { current_log_level ; }
+function get_path() { get_full_type_path ; }
+function get_dir() { get_type_dir_path ; }
+function get_root() { log_root ; }
+function get_type() { echo "${TYPE}" ; }
+function get_disabled() { get_disabled_from_config ; }
+function get_config() { echo "${CONFIG_PATH}" ; }
+function get_pager() { get_pager_from_config ; }
 
 [[ -n "${ULOGGER_TYPE+x}" ]] && TYPE="${ULOGGER_TYPE}"
 
@@ -140,203 +330,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 
-function __get_log_level_from_env() {
-    if [[ -n "${CURRENT_LOG_LEVEL+x}" ]]; then
-        echo "${CURRENT_LOG_LEVEL}"
-    elif [[ -n "${DEFAULT_LOG_LEVEL+x}" ]]; then
-        echo "${DEFAULT_LOG_LEVEL}"
-    else
-        echo ""
-    fi
-}
-
-function __get_default_type_from_env() {
-    [[ -n "${DEFAULT_LOG_TYPE+x}" ]] && echo "${DEFAULT_LOG_TYPE}" || echo ""
-}
-
-function __get_user_config() {
-    tq "${CONFIG_PATH}" -s | jq
-}
-
-function __get_default_config() {
-    tq "${DEFAULT_CONFIG_PATH}" -s | jq
-}
-
-function __get_from_config_file() {
-    local path="${1}" ; shift
-
-    # tq "${path}" "$@" -s | xargs
-    local -r val="$(yq "$@" "${path}")"
-
-    if [[ "${val}" == "null" ]]; then
-        echo ""
-    else
-        echo "${val}"
-    fi
-}
-
-function __get_from_default_config() {
-    local field="${1}"
-    __get_from_config_file "${DEFAULT_CONFIG_PATH}" "${field}"
-}
-
-function __get_from_user_config() {
-    local field="${1}"
-    __get_from_config_file "${CONFIG_PATH}" "${field}"
-}
-
-function __get_from_config() {
-    local field="${1}"
-    local -r value="$(__get_from_user_config "${field}")"
-
-    if [[ -z "${value}" ]]; then
-        __get_from_default_config "${field}"
-    else
-        echo "${value}"
-    fi
-}
-
-function __default_type() {
-    local -r default_type="$(__get_from_config .type)"
-    [[ -z "${default_type}" ]] && __get_default_type_from_env
-    echo "${default_type}"
-}
-
-function __set_log_type() {
-    if [[ -z "${TYPE}" ]]; then
-        TYPE="$(__default_type)"
-    fi
-
-    if [[ -z "${TYPE}" ]]; then
-        echo "[ERROR] unable to determine logger type from config"
-        return 1
-    fi
-}
-
-function __log_root() {
-    local log_root=""
-
-    [[ -z "${log_root}" ]] && log_root="$(__get_from_config .root)"
-    [[ -z "${log_root}" ]] && log_root="${LOG_ROOT:-}"
-    [[ -n "${log_root}" ]] && echo "${log_root}" && return 0
-
-    echo "[ERROR] unable to determine log root from config" && exit 1
-}
-
-function __current_log_level() {
-    local level
-
-    level="$(__get_from_config ".${TYPE}.level")"
-    [[ -z "${level}" ]] && level="$(__get_from_config .level.current)"
-    [[ -z "${level}" ]] && level="$(__get_from_config .level.default)"
-    [[ -z "${level}" ]] && level="$(__get_log_level_from_env)"
-    [[ -n "${level}" ]] && echo "${level}" && return 0
-
-    echo "[ERROR] unable to determine current log level from config" && exit 1
-}
-
-function __get_type_root() {
-    __get_from_config ".${TYPE}.directory"
-}
-
-function __get_type_file() {
-    local -r ext="$(__get_from_config ".${TYPE}.extension")"
-    local -r type_file="$(__get_from_config ".${TYPE}.file")"
-    echo "${type_file:-${TYPE}}.${ext:-log}"
-}
-
-function __get_type_dir_path() {
-    local path_parts=()
-
-    path_parts+=("$(__log_root)")
-    path_parts+=("$(__get_type_root)")
-
-    file::make_path "${path_parts[@]}"
-}
-
-function __get_full_type_path() {
-    local path_parts=()
-    path_parts+=("$(__get_type_dir_path)")
-    path_parts+=("$(__get_type_file)")
-
-    file::make_path "${path_parts[@]}"
-}
-
-function __get_disabled_from_config() {
-    local disabled=""
-
-    disabled="$(__get_from_config .disabled)"
-    [[ -z "${disabled}" ]] && disabled="$(__get_from_config ".${TYPE}.disabled")"
-    [[ -z "${disabled}" ]] && disabled="$(env::get "ULOGGER_DISABLED")"
-
-    echo "${disabled}"
-}
-
-function __get_pager_from_env() {
-    local pager_type="${1}"
-    local -r pager_var="ULOGGER_$(str::upper "${pager_type}")_PAGER"
-
-    if [[ -n "${!pager_var+x}" ]]; then
-        echo "${!pager_var}"
-    fi
-}
-
-function __get_pager_from_config() {
-    local pager_type="${FIELD##pager.}"
-    local pager
-
-    pager="$(__get_from_user_config ".${FIELD}")"
-    [[ -z "${pager}" ]] && pager="$(__get_pager_from_env "${pager_type}")"
-    [[ -z "${pager}" ]] && pager="$(__get_from_default_config  ".${FIELD}")"
-    [[ -n "${pager}" ]] && echo "${pager}" && return 0
-
-    echo "[ERROR] unable to find ${pager_type} pager" && exit 1
-}
-
-function __handle_query() {
-    if [[ -z "${QUERY_TYPES[${QUERY}]}" ]]; then
-        echo "-q|--query must be one of '$(__query_types)' not '${QUERY}'"
-        return 1
-    fi
-
-    "__get_${QUERY}_config" || return 1
-}
-
-function __handle_alias() {
-    local -r value="$(__get_from_config ".alias.${ALIAS}.${FIELD}")" || return 1
-
-    [[ -n "${value}" ]] && echo "${value}" && return 0
-
-    echo "${FIELD}"
-}
-
-function __get_level() { __current_log_level ; }
-function __get_path() { __get_full_type_path ; }
-function __get_dir() { __get_type_dir_path ; }
-function __get_root() { __log_root ; }
-function __get_type() { echo "${TYPE}" ; }
-function __get_disabled() { __get_disabled_from_config ; }
-function __get_config() { echo "${CONFIG_PATH}" ; }
-function __get_pager() { __get_pager_from_config ; }
-
-function __handle_field() {
-    if [[ -z "${ALIAS}" ]]; then
-        validate_one_of "-f|--field" "${FIELD}" "${!FIELDS[@]}" || return 1
-        "${FIELD_ACTIONS[${FIELD}]}" || return 1
-    else
-        __handle_alias || return 1
-    fi
-}
-
 validate_file "${CONFIG_PATH}" "-c|--config" || exit 1
-__set_log_type || exit 1
+set_log_type || exit 1
 
 if [[ -n "${EDIT}" ]]; then
     ${EDITOR} "${CONFIG_PATH}"
 elif [[ -n "${QUERY}" ]]; then
-    __handle_query || exit 1
+    handle_query || exit 1
 elif [[ -n "${FIELD}" ]]; then
-    __handle_field || exit 1
+    handle_field || exit 1
 else
     echo "[ERROR] one of -f|--field or -q|--query is required"
     exit 1
