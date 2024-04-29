@@ -20,7 +20,7 @@ declare -A CMDS=(
 
 function cmds() {
     local sep="${1:-|}"
-    join_by "${sep}" "${!CMDS[@]}"
+    str::join "${sep}" "${!CMDS[@]}"
 }
 
 function cmd_descriptions() {

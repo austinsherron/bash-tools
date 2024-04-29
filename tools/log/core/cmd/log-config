@@ -38,7 +38,7 @@ declare -A FIELD_ACTIONS=(
 
 function __fields() {
     local sep="${1:-|}"
-    join_by "${sep}" "${!FIELDS[@]}"
+    str::join "${sep}" "${!FIELDS[@]}"
 }
 
 function __field_descriptions() {

@@ -149,7 +149,7 @@ get_modes_str() {
         fi
     done
 
-    modes_str="$(join_by "," "${non_empty_modes[@]}")"
+    modes_str="$(str::join "," "${non_empty_modes[@]}")"
     echo "[${modes_str}]"
 }
 

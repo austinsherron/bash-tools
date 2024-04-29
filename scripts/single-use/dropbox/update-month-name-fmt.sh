@@ -67,7 +67,7 @@ ROOT="$(realpath "${ROOT%%/}")"
 
 ulogger info "searching for month dirs in ${ROOT}"
 
-FIND_NAME_CLAUSE="$(join_by " -o -name " "${!MONTHS[@]}")"
+FIND_NAME_CLAUSE="$(str::join " -o -name " "${!MONTHS[@]}")"
 FIND_CMD_STR="find ${ROOT} -type d -name ${FIND_NAME_CLAUSE}"
 FIND_RESULTS_FILE="$(mktemp)"
 
