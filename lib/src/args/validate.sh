@@ -528,7 +528,7 @@ function validate_installed() {
 
     check::installed "$@" && return 0
 
-    local -r pkgs="$(join_by ", " "$@")"
+    local -r pkgs="$(str::join ", " "$@")"
     log_error "${caller} requires that these packages be installed: ${pkgs}"
 }
 
