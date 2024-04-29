@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+source "${BASH_LIB}/log/utils.sh"
+
 
 usage() {
     echo "usage: git split-repo [<options>] <directory>"
@@ -30,11 +32,13 @@ OPTIONS
     -r, --repo          optional, defaults to ../<directory>-<repository>; the path to the new repo
     -b, --branch        optional, defaults to the "TRUNK" env var, if set; the name of the new repo's initial branch
     --split-branch      optional, defaults to split-<dir-name>-from-<repository>; the name of the temporary branch used to perform the split
-    --rm                optional; if present, removes directory from the current repo after a successful split
-    --keep-split        optional; if present, keep the temporary branch used to perform the split
-    --dry-run           optional; if present, no state changes are made
-    -v, --verbose       optional; if present, the script will print to stdout messages about the script's progress
-    -h, --help          optional; display this message
+
+FLAGS
+
+    --rm                if present, removes directory from the current repo after a successful split
+    --keep-split        if present, keeps the temporary branch used to perform the split
+    --dry-run           if present, no state changes are made
+    -h, --help          display this message
 help
 }
 
@@ -53,18 +57,30 @@ DRY_RUN=""
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="git"
 [[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="repo"
 
+LogFlags::process_log_flags "$@"
+
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -r|--repo) DST_PATH="${2}" ; shift ; shift ;;
-    -b|--branch) INIT_BRANCH="${2}" ; shift ; shift ;;
-    --split-branch) SPLIT_BRANCH="${2}" ; shift ; shift ;;
-    --rm) RM="true" ; shift ;;
-    --keep-split) KEEP_SPLIT="true" ; shift ;;
-    --dry-run) DRY_RUN="true" ; shift ;;
-    -v|--verbose) export ULOGGER_VERBOSE="true" ; shift ;;
-    -h|--help) help ; exit 0 ;;
-    -*) usage ; exit 1 ;;
-    *) DIR_PATH="${1}" ; shift ;;
+    -r|--repo)
+      DST_PATH="${2}" ; shift ; shift ;;
+    -b|--branch)
+      INIT_BRANCH="${2}" ; shift ; shift ;;
+    --split-branch)
+      SPLIT_BRANCH="${2}" ; shift ; shift ;;
+    --rm)
+      RM="true" ; shift ;;
+    --keep-split)
+      KEEP_SPLIT="true" ; shift ;;
+    --dry-run)
+      DRY_RUN="true" ; shift ;;
+    -v*|-q*)
+      shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    -*)
+      ulogger error "$(usage)" && exit 1 ;;
+    *)
+      DIR_PATH="${1}" ; shift ;;
   esac
 done
 

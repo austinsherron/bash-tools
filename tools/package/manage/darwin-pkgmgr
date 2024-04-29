@@ -2,11 +2,33 @@
 
 set -Eeuo pipefail
 
-source /etc/profile.d/shared_paths.sh
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/core/str.sh"
+source "${BASH_LIB}/log/utils.sh"
 source "${BASH_LIB}/utils/sys.sh"
 
 
-USAGE="pkgmgr cmd [-p pkg [-c]|-t] [-f] [-s script {--script-arg [arg]}] {brew-args}"
+declare -A CMD_DESCRIPTIONS=(
+    [check]="checks if -p|--pkg is installed"
+    [info]="displays information about -p|--pkg"
+    [search]="searches for -p|--pkg"
+    [install]="installs -p|--pkg"
+    [update]="maps to 'upgrade'"
+    [remove]="removes -p|--pkg"
+)
+
+function cmds() {
+    local sep="${1:-|}"
+    str::join "${sep}" "${!CMD_DESCRIPTIONS[@]}"
+}
+
+function cmd_descriptions() {
+    for cmd in "${!CMD_DESCRIPTIONS[@]}"; do
+        echo "    ${cmd}           ${CMD_DESCRIPTIONS[${cmd}]}"
+    done
+}
+
+USAGE="pkgmgr [cmd] {brew-args} [-p pkg] [-s script {--script-arg [arg]}] {flags}"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -16,18 +38,10 @@ help() {
 cat <<help
 DESCRIPTION
 
-    Central entry point for basic interactions w/ packages for a darwin system via brew. Available commands include:
-
-        * check - checks if -p|--pkg is installed
-        * info - displays information about -p|--pkg
-        * search - searches for -p|--pkg
-        * install - installs -p|--pkg
-        * update - maps to "upgrade"
-        * remove - removes -p|--pkg
+    Central entry point for basic interactions w/ packages for a darwin system via brew. Can also used be to run installation scripts in "\${SCRIPTS_ROOT}/install/darwin|generic"
+    w/ --script.
 
     Packages are installed only if they aren't already, unless -f|--force is provided. Similarly, packages are only updated/removed if they already exist in the system.
-
-    Can also used be to run installation scripts in "\${SCRIPTS_ROOT}/install/darwin|generic" w/ --script.
 
     Note: intended for use w/ darwin based systems.
 
@@ -35,21 +49,27 @@ USAGE
 
     ${USAGE}
 
+COMMANDS
+
+$(cmd_descriptions)
+
 POSITIONAL ARGUMENTS
 
-    CMD                 optional, defaults to "install"; must be one of "check", "search", "install", "remove", or "update"; the cmd to run
+    CMD                 optional, defaults to "install"; the cmd to run
+    ARGS                optional; arbitrary params/args to pass directly to brew; WARN: cmd must be specified (can't use defaulting) if using wildcard arguments
 
 OPTIONS
 
     -p, --pkg           optional if -s|--script or -t|--tap is used; the name of the package on which to perform an action
-    -c, --cask          optional; if provided, indicates that -p|--pkg should be treated as a cask
     -t, --tap           optional; indicates that the provided "repo" should be tapped
-    -f, --force         optional; if provided, install command will be executed even if package is already installed
     -m, --mgr           optional; exists primarily to make the pkgmgr api consistent
     -s, --script        optional; the name of a script in "\${SCRIPTS_ROOT}/install/[os]|generic" to run; if provided, all params except -v|--verbose and -d|--dry-run will be ignored
-    *                   optional; arbitrary params/args to pass directly to brew; WARN: cmd must be specified (can't use defaulting) if using wildcard arguments
-    -d, --dry-run       optional; if present, no state changes are made
-    -v, --verbose       optional; if present, print to stdout messages about the script's progress
+
+FLAGS
+
+    -c, --cask          if provided, indicates that -p|--pkg should be treated as a cask
+    -f, --force         if provided, install command will be executed even if package is already installed
+    -d, --dry-run       if present, no state changes are made
     -h, --help          display this message
 help
 }
@@ -65,7 +85,6 @@ declare -A CMDS=(
 
 declare -A INSTALLED_CMDS=([update]="upgrade" [remove]="remove")
 
-
 PKG=""
 CASK=""
 TAP=""
@@ -76,55 +95,6 @@ SCRIPT=""
 DRY_RUN=""
 INSTALLED=1
 
-while [[ $# -gt 0 ]]; do
-  case "${1}" in
-    -p|--pkg)
-      PKG="${2}"
-      shift
-      shift
-      ;;
-    -c|--cask)
-      CASK="--cask"
-      shift
-      ;;
-    -t|--tap)
-      TAP="${2}"
-      shift
-      shift
-      ;;
-    -f|--force)
-      FORCE="true"
-      shift
-      ;;
-    -s|--script)
-      SCRIPT="${2}"
-      shift
-      shift
-      ;;
-    -d|--dry-run)
-      DRY_RUN="true"
-      shift
-      ;;
-    -v|--verbose)
-      export ULOGGER_VERBOSE="true"
-      shift
-      ;;
-    -h|--help)
-      help
-      exit 0
-      ;;
-    -m|--mgr)
-      shift
-      shift
-      ;;
-     *)
-      ARGS+=("${1}")
-      shift
-      ;;
-  esac
-done
-
-
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="pkg"
 export ULOGGER_PREFIX="${CMD}"
 
@@ -133,37 +103,44 @@ if ! sys::is_darwin; then
     exit 1
 fi
 
-__handle_tap() {
+function handle_tap() {
     ulogger info "tapping ${TAP}"
     [[ "${DRY_RUN}" == "true" ]] && return 0
     brew tap "${TAP}" || return 1
 }
 
-__search_pkg() {
+function search_pkg() {
     brew search "${PKG}" && return 0 || return 1
 }
 
-__check_pkg() {
-    local is_cask
-    is_cask="$([[ -z "${CASK}" ]] && echo "no" || echo "yes")"
+function check_pkg() {
+    local cmd=("brew" "list" "${PKG}")
+    local is_cask="no"
+
+    if [[ -n "${CASK}" ]]; then
+        is_cask="yes"
+        cmd+=("--cask")
+    fi
 
     ulogger debug "checking brew for pkg=${PKG} (cask? ${is_cask})"
-    brew list "${PKG}" ${CASK} &> /dev/null && return 0 || return 1
+    "${cmd[@]}" &> /dev/null && return 0 || return 1
 }
 
-__process_cmd() {
-    local cmd="${CMDS[${CMD}]}"
-    local -r full_cmd="$(echo "brew ${cmd} ${PKG} ${CASK} ${ARGS[*]}" | xargs)"
+function process_cmd() {
+    local cmd=("brew" "${CMDS[${CMD}]}" "${PKG}")
 
-    ulogger debug "running '${full_cmd}'"
+    [[ -n "${CASK}" ]] && cmd+=("--cask")
+    [[ ${#ARGS[@]} -gt 0 ]] && cmd+=("${ARGS[@]}")
+
+    ulogger debug "running '${cmd[*]}'"
     [[ "${DRY_RUN}" == "true" ]] && return 0
 
-    $full_cmd || return 1
+    "${cmd[@]}" || return 1
 }
 
-__run_script() {
-    local script_path
-    script_path="${SCRIPTS_ROOT}/install/$(sys::os_type)/${SCRIPT}.sh"
+function run_script() {
+    # NOTE: if we're here, it should be safe to assume this path (i.e.: darwin scripts)
+    local script_path="${SCRIPTS_ROOT}/install/darwin/${SCRIPT}.sh"
 
     if [[ ! -f "${script_path}" ]]; then
         ulogger debug "script=${script_path} doesn't exist; falling back to os-agnostic path"
@@ -177,37 +154,61 @@ __run_script() {
     "${script_path}" "${ARGS[@]}" || return 1
 }
 
+function process_positional() {
+    local arg="${1}"
+
+    if [[ -z "${CMD}" ]]; then
+        CMD="${arg}"
+    else
+        ARGS+=("${arg}")
+    fi
+}
+
+LogFlags::process_log_flags "$@"
+
+while [[ $# -gt 0 ]]; do
+  case "${1}" in
+    -p|--pkg)
+      PKG="${2}" ; shift ; shift ;;
+    -c|--cask)
+      CASK="true" ; shift ;;
+    -t|--tap)
+      TAP="${2}" ; shift ; shift ;;
+    -f|--force)
+      FORCE="true" ; shift ;;
+    -s|--script)
+      SCRIPT="${2}" ; shift ; shift ;;
+    -d|--dry-run)
+      DRY_RUN="true" ; shift ;;
+    -v*|-q*)
+      shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    -m|--mgr)
+      shift ; shift ;;
+     *)
+      process_positional "${1}" ; shift ;;
+  esac
+done
+
+
+validate_at_least_one "-p|--pkg" "${PKG}" "-t|--tap" "${TAP}" "-s|--script" "${SCRIPT}" || exit 1
+validate_only_one "-p|--pkg" "${PKG}" "-t|--tap" "${TAP}" "-s|--script" "${SCRIPT}" || exit 1
+
 if [[ -n "${SCRIPT}" ]]; then
-    __run_script && exit 0 || exit 1
-fi
-
-if [[ -z "${TAP}" ]] && [[ -z "${PKG}" ]]; then
-    ulogger error "one of -p|--pkg or -t|--tap is required"
-    exit 1
-fi
-
-if [[ ${#ARGS[@]} -ge 1 ]]; then
-    CMD="${ARGS[0]}"
-    ARGS=("${ARGS[@]:1}")
+    run_script ; exit $?
+elif [[ -n "${TAP}" ]]; then
+    handle_tap && exit 0 || exit 1
 fi
 
 [[ -z "${CMD}" ]] && CMD="install"
-
-if [[ -n "${TAP}" ]]; then
-    __handle_tap && exit 0 || exit 1
-fi
-
-if [[ -z "${CMDS[${CMD}]+x}" ]]; then
-    CMDS_STR="$(echo "${!CMDS[*]}" | tr ' ' '|')"
-    ulogger error "cmd must be one of '${CMDS_STR}', not '${CMD}'"
-    exit 1
-fi
+validate_one_of "cmd" "${CMD}" "${!CMDS[@]}" || exit 1
 
 if [[ "${CMD}" == "search" ]]; then
-    __search_pkg && exit 0 || exit 1
+    search_pkg ; exit $?
 fi
 
-__check_pkg && INSTALLED=0 || INSTALLED=1
+check_pkg && INSTALLED=0
 [[ "${CMD}" == "check" ]] && exit "${INSTALLED}"
 
 if [[ ${INSTALLED} -eq 0 ]] && [[ "${CMD}" == "install" ]]; then
@@ -219,5 +220,5 @@ elif [[ ${INSTALLED} -eq 1 ]] && [[ -n "${INSTALLED_CMDS["${CMD}"]+x}" ]]; then
     exit 1
 fi
 
-__process_cmd && exit 0 || exit 1
+process_cmd
 
