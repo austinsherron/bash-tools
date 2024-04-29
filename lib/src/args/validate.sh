@@ -129,16 +129,44 @@ function validate_at_least_one() {
     local names=()
 
     while [[ $# -gt 0 ]]; do
-        [[ -n "${1}" ]] && return 0
-        names+=("${2}")
-
-        shift
-        shift
+        names+=("${1}")
+        [[ -n "${2}" ]] && return 0
+        shift ; shift
     done
 
-    local names_str
-    names_str="$(echo "${names[@]}" | tr ' ' ', ')"
+    local -r names_str="$(echo "${names[@]}" | tr ' ' ', ')"
+    log_error "one of ${names_str} is required"
 
+    return 1
+}
+
+#######################################
+# Validates that at least one provided variable is non-empty.
+# Arguments:
+#   n "name" "value" pairs, i.e.:
+#       validate_at_least_one "-1|--one" "${ONE}" "-2|--two" "${TWO}"
+# Outputs:
+#   Prints error message to stdout depending on the current log level (see: ulogger -h)
+# Returns:
+#   0 if at least one value is non-empty, 1 otherwise
+#######################################
+function validate_only_one() {
+    if [[ $(($# % 2)) -ne 0 ]]; then
+        log_error "validate_only_one takes N pairs: the args to validate and their names/flags"
+        return 2
+    fi
+
+    local names=()
+    local vals=()
+
+    while [[ $# -gt 0 ]]; do
+        names+=("${1}") ; shift
+        [[ -n "${1}" ]] && vals+=("${1}") ; shift
+    done
+
+    [[ ${#vals[@]} -le 1 ]] && return 0
+
+    local -r names_str="$(echo "${names[@]}" | tr ' ' ', ')"
     log_error "one of ${names_str} is required"
 }
 

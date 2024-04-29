@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+source "${BASH_LIB}/log/utils.sh"
+
 
 usage() {
     echo "usage: git merge-repo [<options>] <repository>"
@@ -28,10 +30,12 @@ OPTIONS
 
     -r, --repo          optional, defaults to the basename of repository; the name to use to add repo's remote to the destination repo
     -b, --branch        optional, defaults to "master", or the "TRUNK" env var, if set; the branch to merge
-    --keep-remote       optional; if present, don't remove the source repo's remote from the destination repo
-    --dry-run           optional; if present, no state changes are made
-    -v, --verbose       optional; if present, the script will print to stdout messages about the script's progress
-    -h, --help          optional; display this message
+
+FLAGS
+
+    --keep-remote       if present, don't remove the source repo's remote from the destination repo
+    --dry-run           if present, no state changes are made
+    -h, --help          display this message
 help
 }
 
@@ -47,16 +51,26 @@ DRY_RUN=""
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="git"
 [[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="repo"
 
+LogFlags::process_log_flags "$@"
+
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -r|--repo) SRC_REPO="${2}" ; shift ; shift ;;
-    -b|--branch) BRANCH="${2}" ; shift ; shift ;;
-    --keep-remote) KEEP_REMOTE="true" ; shift ;;
-    --dry-run) DRY_RUN="true" ; shift ;;
-    -v|--verbose) export ULOGGER_VERBOSE="true" ; shift ;;
-    -h|--help) help ; exit 0 ;;
-    -*) usage ; exit 1 ;;
-    *) SRC_PATH="${1}" ; shift ;;
+    -r|--repo)
+      SRC_REPO="${2}" ; shift ; shift ;;
+    -b|--branch)
+      BRANCH="${2}" ; shift ; shift ;;
+    --keep-remote)
+      KEEP_REMOTE="true" ; shift ;;
+    --dry-run)
+      DRY_RUN="true" ; shift ;;
+    -v*|-q*)
+      shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    -*)
+      ulogger error "$(usage)" && exit 1 ;;
+    *)
+      SRC_PATH="${1}" ; shift ;;
   esac
 done
 
