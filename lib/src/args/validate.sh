@@ -4,6 +4,7 @@
 source "${BASH_LIB}/args/check.sh"
 source "${BASH_LIB}/core/str.sh"
 source "${BASH_LIB}/utils/env.sh"
+source "${BASH_LIB}/utils/sys.sh"
 
 
 env::default "VALIDATE_USE_ULOGGER" "true"

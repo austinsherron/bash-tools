@@ -31,12 +31,12 @@ declare -A PUBLIC_LOG_LEVELS=(
     [ERROR]=4
 )
 declare -A LEVEL_COLORS=(
-    [TRACE]="${COLOR_BLUE}"
-    [DEBUG]="${COLOR_PURPLE}"
-    [INFO]="${COLOR_YELLOW}"
-    [WARN]="${COLOR_LIGHT_RED}"
-    [ERROR]="${COLOR_RED}"
-    [OFF]="${COLOR_NONE}"
+    [TRACE]="${BLUE}"
+    [DEBUG]="${PURPLE}"
+    [INFO]="${YELLOW}"
+    [WARN]="${ORANGE}"
+    [ERROR]="${RED}"
+    [OFF]="${NO_COLOR}"
 )
 
 LOG_LEVEL_DEFAULT="WARN"
@@ -262,7 +262,7 @@ function LogLevel::fmt_for_notify() {
     local -r log_level="$(str::upper "${1}")"
     LogLevel::validate "${log_level}" || return 1
 
-    # str::right_pad "[${log_level}]" 8
-    echo -e "$(color::print "${LEVEL_COLORS[${log_level}]}" "$(LogLevel::fmt "${log_level}")")"
+    local level_color="${LEVEL_COLORS[${log_level}]}"
+    echo -e "$(color::ize "${level_color}" "$(LogLevel::fmt "${log_level}")")"
 }
 

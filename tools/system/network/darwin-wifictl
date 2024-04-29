@@ -265,7 +265,7 @@ function action::validate() { validate_network; }
 
 ## arg validation
 
-validate_os darwin
+validate_os darwin "darwin-wifictl"
 validate_installed "wifictl" fzf op speedtest
 validate_one_of "cmd" "${CMD}" "${!CMDS[@]}" || exit 1
 
