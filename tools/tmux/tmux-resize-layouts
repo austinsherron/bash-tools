@@ -2,8 +2,10 @@
 
 set -Eeuo pipefail
 
+source "${BASH_LIB}/log/utils.sh"
 
-USAGE="tmux-resize-layouts {-t window} {options}"
+
+USAGE="tmux-resize-layouts {-t window} {options} {flags}"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -24,29 +26,29 @@ USAGE
 ADDITIONAL OPTIONS
 
     -t, --target        optional, multi-valued, defaults to all windows; the names of the windows for which to set a layout
+
+FLAGS
+
     -h, --help          display this message
 help
 }
 
 
 TARGETS=()
-CMD="tmux-resize-layout"
+CMD=("tmux-resize-layout")
+
+LogFlags::process_log_flags "$@"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -t|--target)
-      TARGETS+=("${2}")
-      shift
-      shift
-      ;;
+      TARGETS+=("${2}") ; shift ; shift ;;
+    -v*|-q*)
+      shift ;;
     -h|--help)
-      help
-      exit 0
-      ;;
+      help && exit 0 ;;
     *)
-      CMD="${CMD} ${1}"
-      shift
-      ;;
+      CMD+=("${1}") && shift ;;
   esac
 done
 
@@ -56,6 +58,9 @@ if [[ "${#TARGETS[@]}" -eq 0 ]]; then
 fi
 
 for target in "${TARGETS[@]}"; do
-    eval "${CMD} -t \"${target}\""
+    TARGET_CMD=("${CMD[@]}" "-t" "${target}")
+
+    ulogger info "resizing tmux layout for target=${target}"
+    "${TARGET_CMD[@]}"
 done
 

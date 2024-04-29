@@ -7,7 +7,7 @@ source "${BASH_LIB}/log/utils.sh"
 source "${BASH_LIB}/utils/exec.sh"
 
 
-USAGE="tmux-add-layout layout [-t window] [-s path]"
+USAGE="tmux-add-layout layout [-t window] [-s path] {flags}"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -61,10 +61,10 @@ while [[ $# -gt 0 ]]; do
       TARGET="$([[ -z "${2+x}" ]] && echo "${TARGET}" || echo "${2}")" ; shift ; shift ;;
     -s|--specs)
       SPEC_PATH="$([[ -z "${2+x}" ]] && echo "${SPEC_PATH}" || echo "${2}")" ; shift ; shift ;;
-    -v*|-q*)
-      shift ;;
     --force)
       COLLISION_ERR_LEVEL="warn" && shift ;;
+    -v*|-q*)
+      shift ;;
     -d|--dry-run)
       export DRY_RUN="true" && shift ;;
     -h|--help)
@@ -76,7 +76,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-validate_required "-l|--layout" "${LAYOUT_ID}"
+
+validate_required "-l|--layout" "${LAYOUT_ID}" || exit 1
 
 # validate target refers to a window
 if [[ -z "$(tmux list-windows -F "#W" | grep "${TARGET}" || true)" ]]; then
