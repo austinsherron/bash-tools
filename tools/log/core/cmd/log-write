@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+export VALIDATE_USE_ULOGGER=""
+source "${BASH_LIB}/args/validate.sh"
 source "${BASH_LIB}/core/str.sh"
 source "${BASH_LIB}/log/level.sh"
 source "${BASH_LIB}/utils/color.sh"
@@ -85,6 +87,8 @@ help
 }
 
 
+## script globals
+
 MSGS=""
 LOG_LINE=""
 OUT_LINE=""
@@ -94,7 +98,13 @@ STRATEGY="NORMAL"
 NO_FMT=""
 CONFIG_PATH=""
 
-process_positional() {
+[[ -n "${ULOGGER_PREFIX+x}" ]] && PREFIX="$(str::upper "${ULOGGER_PREFIX}")"
+[[ -n "${ULOGGER_VERBOSE+x}" ]] && [[ "${ULOGGER_VERBOSE}" == "true" ]] && STRATEGY="FORCE"
+[[ -n "${ULOGGER_STRATEGY+x}" ]] && STRATEGY="$(str::upper "${ULOGGER_STRATEGY}")"
+
+## helper functions
+
+function process_positional() {
     if [[ -z "${LOG_LEVEL}" ]]; then
         LOG_LEVEL="$(str::upper "${1}")"
         log-level "${LOG_LEVEL}" -v || exit 1
@@ -103,13 +113,35 @@ process_positional() {
     fi
 }
 
-write_log() {
+function write_log() {
     echo -e "$*"
 }
 
-[[ -n "${ULOGGER_PREFIX+x}" ]] && PREFIX="$(str::upper "${ULOGGER_PREFIX}")"
-[[ -n "${ULOGGER_VERBOSE+x}" ]] && [[ "${ULOGGER_VERBOSE}" == "true" ]] && STRATEGY="FORCE"
-[[ -n "${ULOGGER_STRATEGY+x}" ]] && STRATEGY="$(str::upper "${ULOGGER_STRATEGY}")"
+function mkdirs_if_missing() {
+    # create log dir if it doesn't exist
+    [[ ! -d "${LOG_ROOT}" ]] && mkdir -p "${LOG_ROOT}"
+    # create log file's parent dir, if it doesn't exist
+    [[ ! -d "${LOG_DIR}" ]] && mkdir -p "${LOG_DIR}"
+    # create log file if it doesn't exist
+    [[ ! -f "${LOG_PATH}" ]] && touch "${LOG_PATH}"
+
+    return 0
+}
+
+function format_log_line() {
+        LEVEL="$(str::right_pad "[${LOG_LEVEL}]" 8)"
+        PREFIX="$([[ -n "${PREFIX}" ]] && echo "[$(str::upper "${PREFIX}")] " || echo "")"
+        LOG_LINE="${LEVEL}${PREFIX}${LOG_LINE} ($(date))"
+        OUT_LINE="${LEVEL}${OUT_LINE}"
+}
+
+function read_from_stdin() {
+    # shellcheck disable=SC2119
+    TMP_FILE="$(file::read)"
+    MSGS="$(cat "${TMP_FILE}")"
+}
+
+## arg parsing
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -131,35 +163,21 @@ while [[ $# -gt 0 ]]; do
 done
 
 
-# arg validation
+## arg validation
 
-if [[ -z "${LOG_LEVEL}" ]]; then
-    echo "[ERROR] -l|--log-level is required"
-    exit 1
-fi
+validate_required_positional "log_level|severity" "${LOG_LEVEL}" || exit 1
+validate_one_of "-s|--strategy" "${STRATEGY}" "${!STRATEGIES[@]}" || exit 1
 
-if [[ -z "${STRATEGIES[${STRATEGY}]+x}" ]]; then
-    STRATEGIES_STR="$(echo "${!STRATEGIES[*]}" | tr ' ' '|')"
-    echo "[ERROR] -s|--strategy must be one of '${STRATEGIES_STR}', not '${STRATEGY}'"
-    exit 1
-fi
+## main
 
 LOG_ROOT="$(log-config -f root -c "${CONFIG_PATH}")"
 LOG_DIR="$(log-config -f dir -c "${CONFIG_PATH}")"
 LOG_PATH="$(log-config -f path -c "${CONFIG_PATH}")"
 
-# create log dir if it doesn't exist
-[[ ! -d "${LOG_ROOT}" ]] && mkdir -p "${LOG_ROOT}"
-# create log file's parent dir, if it doesn't exist
-[[ ! -d "${LOG_DIR}" ]] && mkdir -p "${LOG_DIR}"
-# create log file if it doesn't exist
-[[ ! -f "${LOG_PATH}" ]] && touch "${LOG_PATH}"
+mkdirs_if_missing
 
-if [[ "${MSGS}" == "-" ]]; then
-    # shellcheck disable=SC2119
-    TMP_FILE="$(file::read)"
-    MSGS="$(cat "${TMP_FILE}")"
-fi
+# "-" indicates log content comes from stdin
+[[ "${MSGS}" == "-" ]] && read_from_stdin
 
 LOG_LINE="${MSGS}"
 OUT_LINE="${MSGS}"
@@ -176,15 +194,18 @@ if [[ "${STRATEGY}" != "NOTIFY" ]]; then
     write_log "${LOG_LINE}" >> "${LOG_PATH}"
 fi
 
-{ log-level "${LOG_LEVEL}"; ERR="$?"; } || true
+# no need to test log level if strategy is either force or notify
+if [[ "${STRATEGY}" == "FORCE" || "${STRATEGY}" == "NOTIFY" ]]; then
+    write_log "${OUT_LINE}" && exit 0
+fi
+
+{ log-level "${LOG_LEVEL}"; RC="$?"; } || true
 
 # propagate unexpected error
-if [[ ${ERR} -eq 2 ]]; then
+if [[ ${RC} -eq 2 ]]; then
     exit 1
 # write to stdout, if necessary
-elif [[ "${STRATEGY}" == "NORMAL" ]] && [[ "${ERR}" -eq 0 ]]; then
-    write_log "${OUT_LINE}"
-elif [[ "${STRATEGY}" == "FORCE" ]] || [[ "${STRATEGY}" == "NOTIFY" ]]; then
+elif [[ "${STRATEGY}" == "NORMAL" ]] && [[ "${RC}" -eq 0 ]]; then
     write_log "${OUT_LINE}"
 fi
 

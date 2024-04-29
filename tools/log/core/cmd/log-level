@@ -9,10 +9,10 @@ source "${BASH_LIB}/core/num.sh"
 source "${BASH_LIB}/log/level.sh"
 
 
-USAGE="log-level LOG_LEVEL [-v] [-t type] [-c path]"
+USAGE="log-level log_level|severity [-v] [-t type] [-c path] {flags}"
 
 usage() {
-    echo "${USAGE}"
+    echo "usage: ${USAGE}"
 }
 
 help() {
@@ -60,15 +60,18 @@ POSITIONAL ARGUMENTS
 
 OPTIONS
 
-    -v, --validate              optional; if specified, exit after validating the provided log level
     -t, --type                  optional; the active logger type, which affects log levels and files; can also be specified via $\ULOGGER_TYPE
-    --convert                   optional; if specified, converts the provided log level -> numeric severity, or severity -> log level
     -c, --config                optional; a path to a file from which to read user ulogger config
-    +*, +[1-5]                  optional; if specified, uses for comparisons the log level that is n levels more severe than the provided level (or the current level, if none is
+
+FLAGS
+
+    -v, --validate              if specified, exit after validating the provided log level
+    --convert                   if specified, converts the provided log level -> numeric severity, or severity -> log level
+    +*, +[1-5]                  if specified, uses for comparisons the log level that is n levels more severe than the provided level (or the current level, if none is
                                 provided), where n is the # of "+" characters or the number after a single "+" character
-    -*, -[1-5]                  optional; if specified, uses for comparisons the log level that is n levels less severe than the provided level (or the current level, if none is
+    -*, -[1-5]                  if specified, uses for comparisons the log level that is n levels less severe than the provided level (or the current level, if none is
                                 provided), where n is the # of "-" characters or the number after a single "-" character
-    -h, --help                  optional; display this message
+    -h, --help                  display this message
 help
 }
 
@@ -80,7 +83,7 @@ CONFIG_PATH=""
 XFM=""
 ERROR_RC=2
 
-function __extract_xfm() {
+function extract_xfm() {
     local xfm="${1}"
 
     if [[ "${xfm}" =~ ^(([\+\-])([\+\-]){0,4})$ ]]; then
@@ -93,7 +96,7 @@ function __extract_xfm() {
     fi
 }
 
-function __process_xfm() {
+function process_xfm() {
     local -r current="$(LogLevel::to_severity "${LOG_LEVEL}")"
     local xfmed="$(($current"${XFM}"))"
     local -r level="$(num::bounded $xfmed 0 4)"
@@ -103,14 +106,22 @@ function __process_xfm() {
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -v|--validate) VALIDATE="true" ; ERROR_RC=1 ; shift ;;
-    -t|--type) export ULOGGER_TYPE="${2}" ; shift ; shift ;;
-    --convert) CONVERT="true" ; shift ;;
-    -c|--config) CONFIG_PATH="${2}" ; shift ; shift ;;
-    -h|--help) help ; exit 0 ;;
-    +*) __extract_xfm "${1}" || exit 1 ; shift ;;
-    -*) __extract_xfm "${1}" || exit 1 ; shift ;;
-    *) LOG_LEVEL="${1}" ; shift ;;
+    -v|--validate)
+      VALIDATE="true" ; ERROR_RC=1 ; shift ;;
+    -t|--type)
+      export ULOGGER_TYPE="${2}" ; shift ; shift ;;
+    --convert)
+      CONVERT="true" ; shift ;;
+    -c|--config)
+      CONFIG_PATH="${2}" ; shift ; shift ;;
+    -h|--help)
+      help ; exit 0 ;;
+    +*)
+      extract_xfm "${1}" || exit 1 ; shift ;;
+    -*)
+      extract_xfm "${1}" || exit 1 ; shift ;;
+    *)
+      LOG_LEVEL="${1}" ; shift ;;
   esac
 done
 
@@ -142,7 +153,7 @@ validate_required "" "${CURRENT_LOG_LEVEL}" "unable to determine current log lev
 LogLevel::validate "${CURRENT_LOG_LEVEL}" || exit $ERROR_RC
 
 # transform provided level before comparison, if necessary
-[[ -n "${XFM}" ]] && __process_xfm
+[[ -n "${XFM}" ]] && process_xfm
 
 # check if the provided level is high enough severity to log to stdout
 LogLevel::should_log "${LOG_LEVEL}" "${CURRENT_LOG_LEVEL}"
