@@ -2,8 +2,12 @@
 
 set -Eeuo pipefail
 
+source "${BASH_LIB}/api/tmux.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/log/utils.sh"
 
-USAGE="tmux-shift-window -d l[eft]|r[ight] [-n num]"
+
+USAGE="tmux-shift-window -d l[eft]|r[ight] [-n num] {flags}"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -23,6 +27,9 @@ OPTIONS
 
     -d, --direction     l[eft] or r[ight]; the direction in which to shift the window
     -n, --num           optional, defaults to 1; integer; the number of places to shift the window
+
+FLAGS
+
     -h, --help          display this message
 help
 }
@@ -31,44 +38,36 @@ help
 DIRECTION=""
 NUM="1"
 
+LogFlags::process_log_flags "$@"
+
 while [[ $# -gt 0 ]]; do
   case $1 in
     -d|--direction)
-      DIRECTION="$([[ -z "${2+x}" ]] && echo "" || echo "${2}")"
-      shift
-      shift
-      ;;
+      [[ -n "${2:-}" ]] && DIRECTION="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     -n|--num)
-      NUM="${2}"
-      shift
-      shift
-      ;;
+      [[ -n "${2:-}" ]] && NUM="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -v*|-q*)
+      shift ;;
     -h|--help)
-      help
-      exit 0
-      ;;
+      help && exit 0 ;;
     *)
-      usage
-      exit 1
-      ;;
+      ulogger error "$(usage)" && exit 1 ;;
   esac
 done
 
 
-if [[ -z "${DIRECTION}" ]]; then
-    ulogger error "-d|--direction is a required parameter"
-    exit 1
-fi
-
-if [[ "${DIRECTION}" != +(l|left|r|right) ]]; then
-    ulogger error "-d|--direction must be one of l[eft]|r[ight]"
-    exit 1
-fi
+validate_required "-d|--direction" "${DIRECTION}" || exit 1
+validate_one_of "-d|--direction" "${DIRECTION}" "l" "left" "r" "right" || exit 1
 
 SIGN="$([[ "${DIRECTION}" =~ l(eft)? ]] && echo "-" || echo "+")"
-TO_SHIFT_IDX="$(tmux display-message -p "#I")"
+TO_SHIFT_IDX="$(tmux::window_idx)"
 # shellcheck disable=SC1102
-NEW_IDX="$((${TO_SHIFT_IDX} "${SIGN}" "${NUM}"))"
+# shellcheck disable=SC2086
+NEW_IDX=$(($TO_SHIFT_IDX "${SIGN}" $NUM))
 
-tmux swap-window -d -s "${TO_SHIFT_IDX}" -t "${NEW_IDX}"
+WINDOW_NAME="$(tmux::window_name)"
+ulogger info "moving window=${WINDOW_NAME} from position $TO_SHIFT_IDX to $NEW_IDX"
+
+ERR="$(tmux swap-window -d -s "${TO_SHIFT_IDX}" -t "${NEW_IDX}" 2>&1)" || true
+if [[ -n "${ERR}" ]]; then ulogger error "${ERR}" && exit 1 ; fi
 

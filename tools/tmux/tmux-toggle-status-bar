@@ -2,11 +2,15 @@
 
 set -Eeuo pipefail
 
+source "${BASH_LIB}/log/utils.sh"
+
 
 # toggles tmux status bar position
 
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="tmux"
 [[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="bar"
+
+LogFlags::process_log_flags "$@"
 
 TMUX_STATUS_POS="$(tmux show-environment TMUX_STATUS_POS | cut -d "=" -f2)"
 NEW_POS=""
@@ -21,6 +25,7 @@ else
 fi
 
 if tmux set-option -g status-position "${NEW_POS}"; then
+    ulogger info "setting tmux status bar position from ${TMUX_STATUS_POS} to ${NEW_POS}"
     tmux setenv TMUX_STATUS_POS "${NEW_POS}"
 else
     ulogger error "error setting status bar position to ${NEW_POS}"
