@@ -229,7 +229,7 @@ function get_type_dir_path() {
     path_parts+=("$(log_root)")
     path_parts+=("$(get_type_root)")
 
-    file::make_path "${path_parts[@]}"
+    path::build "${path_parts[@]}"
 }
 
 function get_full_type_path() {
@@ -237,7 +237,7 @@ function get_full_type_path() {
     path_parts+=("$(get_type_dir_path)")
     path_parts+=("$(get_type_file)")
 
-    file::make_path "${path_parts[@]}"
+    path::build "${path_parts[@]}"
 }
 
 function get_disabled_from_config() {
@@ -280,12 +280,16 @@ function handle_query() {
     "__get_${QUERY}_config" || return 1
 }
 
+# shellcheck disable=SC2120
 function handle_alias() {
-    local -r value="$(get_from_config ".alias.${ALIAS}.${FIELD}")" || return 1
+    local alias="${1:-${ALIAS}}"
+    local field="${2:-${FIELD}}"
+
+    local -r value="$(get_from_config ".alias.${alias}.${field}")" || return 1
 
     [[ -n "${value}" ]] && echo "${value}" && return 0
 
-    echo "${FIELD}"
+    echo "${field}"
 }
 
 function handle_field() {
@@ -295,6 +299,11 @@ function handle_field() {
     else
         handle_alias || return 1
     fi
+}
+
+function process_type() {
+    local type="${1:-}"
+    TYPE="$(handle_alias type "${type}")"
 }
 
 function get_level() { current_log_level ; }
@@ -315,7 +324,7 @@ while [[ $# -gt 0 ]]; do
     -q|--query)
       QUERY="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     -t|--type)
-      [[ -z "${TYPE}" ]] && TYPE="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+      [[ -z "${TYPE}" ]] && process_type "${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     -a|--alias)
       ALIAS="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     -c|--config)
