@@ -4,6 +4,8 @@ source "${BASH_LIB}/args/check.sh"
 source "${BASH_LIB}/core/str.sh"
 
 
+## flags #######################################################################
+
 #######################################
 # Checks if the provided value is a ulogger verbosity flag, i.e.: -q+ or -v+.
 # Arguments:
@@ -129,13 +131,35 @@ function LogFlags::process_log_flags() {
     done
 }
 
+## env #########################################################################
+
+function exec_log_env() {
+    local flag="${1}" ; shift
+    local cmd=("log-env")
+
+    while [[ $# -gt 0 ]]; do
+        cmd+=("${flag}" "${1}") ; shift
+    done
+
+    # NOTE: hacky way to ensure cmd is executed correctly
+    if [[ "${flag}" == "-r" ]]; then
+        "${cmd[@]}"
+    else
+        eval "$("${cmd[@]}")"
+    fi
+}
+
 #######################################
 # Wraps "log-env --read".
 # Arguments:
 #   All arguments are passed to log-env as arguments to "-r|--read".
 #######################################
 function LogEnv::read() {
-    eval "log-env -r $(join_by " -r " "$@")"
+    local args=("$@")
+
+    [[ ${#args[@]} -eq 0 ]] && args=("all")
+
+    exec_log_env -r "${args[@]}"
 }
 
 #######################################
@@ -144,7 +168,7 @@ function LogEnv::read() {
 #   All arguments are passed to log-env as arguments to "-s|--set".
 #######################################
 function LogEnv::set() {
-    eval "$(log-env -s "$(join_by " -s " "$@")")"
+    exec_log_env -s "$@"
 }
 
 #######################################
@@ -153,6 +177,10 @@ function LogEnv::set() {
 #   All arguments are passed to log-env as arguments to "-c|--clear".
 #######################################
 function LogEnv::clear() {
-    eval "$(log-env -c "$(join_by " -c " "$@")")"
+    local args=("$@")
+
+    [[ ${#args[@]} -eq 0 ]] && args=("all")
+
+    exec_log_env -c "${args[@]}"
 }
 

@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-source "${BASH_LIB}/log/stub.sh"
-
 
 #######################################
 # Gets the current "os-type", i.e.: linux, darwin, etc.
@@ -64,7 +62,7 @@ function sys::username() {
     elif sys::is_darwin; then
         whoami && return 0 || return 1
     else
-        StubLogger::log error "unrecognized os-type: "
+        ulogger error "unrecognized os-type: "
         return 2
     fi
 }
