@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+export VALIDATE_USE_ULOGGER=""
+source "${LOCAL_LIB}/bash/args/validate.sh"
+source "${LOCAL_LIB}/bash/data/yaml.sh"
+
+
+USAGE="granica-config [selector] [--a type] [--edit] [--config path]"
+
+usage() {
+    echo "${USAGE}"
+}
+
+description() {
+    echo "read/edit granica tooling configuration"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    SELECTOR           optional;
+
+OPTIONS
+
+    -a|--alias          optional; a type of alias for which to query the provided selector; using -a|--alias changes
+    --edit              optional; if specified, opens the granica config file in an editor (configured via "EDITOR" env var)
+    --config            optional; defaults to "\${XDG_CONFIG_HOME}/granica/config.toml"; a path to the config file to use; can also be set via "GRANICA_CONFIG" env var
+    -h, --help          optional; display this message
+help
+}
+
+
+SELECTOR=""
+ALIAS=""
+EDIT=""
+CONFIG="${XDG_CONFIG_HOME}/granica/config.toml"
+
+[[ -n "${GRANICA_CONFIG+x}" ]] && CONFIG="${GRANICA_CONFIG}"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -a|--alias) ALIAS="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    --edit) EDIT="true" ; shift ;;
+    --config) CONFIG="${2:-${CONFIG}}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -h|--help) help && exit 0 ; shift ;;
+    --description) description && exit 0 ;;
+    -*) echo "error: $(usage)" && exit 1 ;;
+    *) SELECTOR="${1}" ; shift ;;
+  esac
+done
+
+
+validate_installed "granica-autoupdate" yq || exit 1
+validate_file "${CONFIG}" "--config" || exit 1
+
+if [[ -n "${EDIT}" ]]; then
+    "${EDITOR}" "${CONFIG}" || exit 1
+fi
+
+SELECTOR="${SELECTOR##.}"
+OUT=""
+
+if [[ -n "${ALIAS}" ]]; then
+    SELECTOR="alias.${ALIAS}.${SELECTOR}"
+fi
+
+OUT="$(yaml::get "${CONFIG}" ".${SELECTOR}")"
+
+if [[ -n "${OUT}" ]]; then
+    echo "${OUT//\${HOME\}/${HOME}}"
+elif [[ -n "${ALIAS}" ]]; then
+    echo "${SELECTOR##*.}"
+fi
+

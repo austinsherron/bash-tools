@@ -4,31 +4,45 @@ set -Eeuo pipefail
 
 source "${BASH_LIB}/args/check.sh"
 source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/core/str.sh"
 source "${BASH_LIB}/data/yaml.sh"
 
 
-declare -A CMDS=(
-    [autoupdate]="  read/write infra autoupdate directives"
-    [ssh]="         ssh into a granica admin server"
-    [version]="     query customer version information"
-)
+CMD_FILE=""
+declare -A CMDS=()
 
-function __cmds() {
-    local sep="${1:-|}"
-    echo "${!CMDS[@]}" | tr " " "${sep}"
-}
+function init_cmds() {
+    local -r cmds="${TOOLS_ROOT}/work/granica/cmd"
+    CMD_FILE="$(mktemp)"
 
-function __cmd_descriptions() {
-    for cmd in "${!CMDS[@]}"; do
-        echo "    ${cmd}       ${CMDS[${cmd}]}"
+    local cmd ; local name ; local desc
+
+    for path in "${cmds}"/*; do
+        cmd="$(basename "${path}")"
+        name="${cmd##granica-}"
+        desc="$("${cmd}" --description)"
+
+        CMDS+=(["${name}"]="${desc}")
+        echo "    ${name}|${desc}" >> "${CMD_FILE}"
     done
 }
 
-USAGE="granica [cmd] {flags}"
+function cmds() {
+    local sep="${1:-|}"
+    str::join "${sep}" "${!CMDS[@]}"
+}
+
+function cmd_descriptions() {
+    column -t -s '|' "${CMD_FILE}"
+}
+
+USAGE="granica cmd {flags}"
 
 usage() {
-    echo "${USAGE}"
+    echo "usage: ${USAGE}"
 }
+
+init_cmds
 
 help() {
 cat <<help
@@ -38,7 +52,7 @@ DESCRIPTION
 
 CMDS
 
-$(__cmd_descriptions)
+$(cmd_descriptions)
 
 USAGE
 
@@ -64,14 +78,10 @@ CMD=""
 HELP=""
 CONFIG="${XDG_CONFIG_HOME}/granica/config.toml"
 
-function __validate_cmd() {
-    if check::one_of "${CMD}" "${!CMDS[@]}"; then
-        return 0
-    fi
-
-    local -r alias="$(yaml::get "${CONFIG}" ".alias.command.${CMD}")"
-    validate_one_of "cmd" "${alias}" "${!CMDS[@]}" || return 1
-    CMD="${alias}"
+function validate_cmd() {
+    validate_required "cmd" "${CMD}" || return 1
+    CMD="$(granica-config "${CMD}" -a command)" || return 1
+    validate_one_of "cmd" "${CMD}" "${!CMDS[@]}" || return 1
 }
 
 while [[ $# -gt 0 ]]; do
@@ -88,7 +98,7 @@ if [[ -n "${HELP}" ]] && [[ -z "${CMD}" ]]; then
 fi
 
 validate_file "${CONFIG}" "--config" || exit 1
-__validate_cmd || exit 1
+validate_cmd || exit 1
 
 ARGS=("${ARGS[@]:1}")
 "granica-${CMD}" "${ARGS[@]}"

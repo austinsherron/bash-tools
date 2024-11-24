@@ -16,6 +16,10 @@ usage() {
     echo "${USAGE}"
 }
 
+description() {
+    echo "execute commands on a granica admin server"
+}
+
 declare -A DIRECTIVES=(
     [do-nothing]="do-nothing"
     [install-rpm]="install-rpm"
@@ -25,7 +29,7 @@ declare -A DIRECTIVES=(
 )
 
 function __directives() {
-    join_by "|" "${!DIRECTIVES[@]}"
+    str::join "|" "${!DIRECTIVES[@]}"
 }
 
 help() {
@@ -75,7 +79,6 @@ WORKFLOWS
     Calling "granica autoupdate --workflow install" will result in the update of the relevant version's directive to "install-rpm". Issuing that same command again will likewise
     update the same version's state to "do-nothing".
 
-
 ALIASES
 
     Directives can be aliased by adding a block of following form to the granica config file:
@@ -101,7 +104,7 @@ DRY_RUN=""
 
 function __set_customer() {
     if [[ -z "${CUSTOMER}" ]]; then
-        CUSTOMER="$(yaml::get "${CONFIG}" .customer.default)" || return 1
+        CUSTOMER="$(granica-config customer.default)" || return 1
     fi
 
     validate_required "-c|--customer" "${CUSTOMER}" || return 1
@@ -129,16 +132,16 @@ function __set_version() {
 }
 
 function __set_directive() {
-    if [[ -n "${DIRECTIVE}" ]] && check::one_of "${DIRECTIVE}" "${!DIRECTIVES[@]}"; then
-        DIRECTIVE="${DIRECTIVES[${DIRECTIVE}]}"
-        return 0
-    elif [[ -z "${DIRECTIVE}" ]]; then
-        return 0
-    fi
+    # if [[ -n "${DIRECTIVE}" ]] && check::one_of "${DIRECTIVE}" "${!DIRECTIVES[@]}"; then
+    #     DIRECTIVE="${DIRECTIVES[${DIRECTIVE}]}"
+    #     return 0
+    # elif [[ -z "${DIRECTIVE}" ]]; then
+    #     return 0
+    # fi
+    [[ -z "${DIRECTIVE}" ]] && return 0
 
-    local -r alias="$(yaml::get "${CONFIG}" ".alias.directive.${DIRECTIVE}")"
-    validate_one_of_optional "directive" "${alias}" "${!DIRECTIVES[@]}" || return 1
-    DIRECTIVE="${DIRECTIVES[${alias}]}"
+    DIRECTIVE="$(granica-config "${DIRECTIVE}" -a directive)"
+    validate_one_of "directive" "${DIRECTIVE}" "${!DIRECTIVES[@]}" || return 1
 }
 
 function __query() {
@@ -175,7 +178,7 @@ function __show_directive() {
 
 function __handle_workflow() {
     local -r current="$(__show_directive true)"
-    local -r next="$(yaml::get "${CONFIG}" ".directive.workflow.${WORKFLOW}.${current}")"
+    local -r next="$(granica-config "directive.workflow.${WORKFLOW}.${current}")"
 
     if [[ -z "${next}" ]]; then
         echo "[ERROR] no step found for directive='${current}' in workflow=${WORKFLOW}"
@@ -195,7 +198,8 @@ while [[ $# -gt 0 ]]; do
     --config) CONFIG="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     --dry-run) DRY_RUN="true" ; shift ;;
     -h|--help) help && exit 0 ; shift ;;
-    -*) echo -n "error: " && usage && exit 1 ;;
+    --description) description && exit 0 ;;
+    -*) echo "error: $(usage)" && exit 1 ;;
     *) DIRECTIVE="${1}" ; shift ;;
   esac
 done
@@ -203,6 +207,8 @@ done
 
 validate_installed "granica-autoupdate" aws granica-version yq || exit 1
 validate_file "${CONFIG}" "--config" || exit 1
+
+export GRANICA_CONFIG="${CONFIG}"
 
 __set_customer || exit 1
 __set_version || exit 1
