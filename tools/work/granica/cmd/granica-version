@@ -15,6 +15,10 @@ usage() {
     echo "${USAGE}"
 }
 
+description() {
+    echo "query customer version information"
+}
+
 help() {
 cat <<help
 DESCRIPTION
@@ -67,10 +71,7 @@ CUSTOMER=""
 CONFIG="${XDG_CONFIG_HOME}/granica/config.toml"
 
 function __set_customer() {
-    if [[ -z "${CUSTOMER}" ]]; then
-        CUSTOMER="$(yaml::get "${CONFIG}" .customer.default)"
-    fi
-
+    [[ -z "${CUSTOMER}" ]] && CUSTOMER="$(granica-config customer.default)"
     validate_required "-c|--customer" "${CUSTOMER}"
 }
 
@@ -99,7 +100,7 @@ function __process_validate() {
     fi
 
     local -r version="$(version::extract "${IDENTIFIER}" version)" || return 1
-    local -r format="$(yaml::get "${CONFIG}" ".customer.${CUSTOMER}.version_format")" || return 1
+    local -r format="$(granica-config "customer.${CUSTOMER}.version_format")" || return 1
 
     IDENTIFIER="${format//\${VERSION\}/${version}}"
 }
@@ -172,7 +173,9 @@ while [[ $# -gt 0 ]]; do
     -n|--next) NEXT="${2:-true}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     -c|--customer) CUSTOMER="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
     --config) CONFIG="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
-    -h|--help) help && exit 0 ; shift ;;
+    -h|--help) help && exit 0 ;;
+    --description) description && exit 0 ;;
+    -*) echo "error: $(usage)" && exit 1 ;;
     *) QUERY="${1}" ; shift ;;
   esac
 done
