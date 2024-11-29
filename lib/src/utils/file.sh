@@ -3,6 +3,8 @@
 source "${BASH_LIB}/args/validate.sh"
 
 
+## file ########################################################################
+
 #######################################
 # Checks if the provided file exists.
 # Arguments:
@@ -107,25 +109,6 @@ function file::is_text() {
 }
 
 #######################################
-# Creates a path from parts. Filters out empty parts to avoid extra separators.
-# Arguments:
-#   n path parts to join w/ forward-slash ('/')
-# Outputs:
-#   Writes to stdout a single path comprised of provided non-empty path parts
-#######################################
-function file::make_path() {
-    local path=""
-
-    [[ $# -ge 1 ]] && path="${1}" ; shift
-
-    while [[ $# -gt 0 ]]; do
-        [[ -n "${1}" ]] && path="${path}/${1}" ; shift
-    done
-
-    echo "${path}"
-}
-
-#######################################
 # Checks an md5 checksum file.
 # Arguments:
 #   path: the path to the checksum file
@@ -142,6 +125,7 @@ function file::md5_checksum() {
     md5sum -c --status "${path}"
 }
 
+## dir #########################################################################
 
 #######################################
 # Checks if the provided directory exists.
@@ -157,3 +141,53 @@ function dir::exists() {
 }
 
 alias dir::is="dir::exists"
+
+## path ########################################################################
+
+#######################################
+# Builds a path from parts. Filters out empty parts to avoid extra separators.
+# Arguments:
+#   n path parts to join w/ forward-slash ('/')
+# Outputs:
+#   Writes to stdout a single path comprised of provided non-empty path parts
+#######################################
+function path::build() {
+    local path=""
+
+    [[ $# -ge 1 ]] && path="${1}" ; shift
+
+    while [[ $# -gt 0 ]]; do
+        [[ -n "${1}" ]] && path="${path}/${1}" ; shift
+    done
+
+    echo "${path}"
+}
+
+#######################################
+# Escapes path-separators (i.e.: slashes) in the provided path.
+# Arguments:
+#   path: the path to escape
+# Outputs:
+#   The provided path w/ path-separators escaped
+#######################################
+function path::escape() {
+    local path="${1}"
+    echo "${path//\//\\\/}"
+}
+
+#######################################
+# Checks if the provided path is a "child" of parent.
+# Arguments:
+#   path: the path to check
+#   parent: the parent path against which to check
+# Returns:
+#   0 if path is a child of parent
+#   1 otherwise
+#######################################
+function path::is_child() {
+    local path="${1}"
+    local parent="${2}"
+
+    test "${path##"${parent}"}" != "${path}"
+}
+
