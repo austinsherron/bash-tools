@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 
+## core ########################################################################
+
 #######################################
 # Gets the current "os-type", i.e.: linux, darwin, etc.
 # Outputs:
@@ -66,4 +68,20 @@ function sys::username() {
         return 2
     fi
 }
+
+## pkg versions ################################################################
+
+#######################################
+# Displays the version of python3 that exists on in PATH, if any.
+# Outputs:
+#   Writes to stdout the version of python3 that exists on in PATH, if any
+#######################################
+function python::version() { python3 --version | cut -d " " -f2 ; }
+
+#######################################
+# Displays the version of ruby that exists on in PATH, if any.
+# Outputs:
+#   Writes to stdout the version of ruby that exists on in PATH, if any
+#######################################
+function ruby::version() { ruby --version | cut -d " " -f2 ; }
 
