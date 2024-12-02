@@ -24,3 +24,18 @@ function tmux::window_idx() {
     tmux display-message -p '#I'
 }
 
+#######################################
+# Displays the tmux layout env var key for the provided target (i.e.: window name). For example:
+#   tmux::layout "lua-tools" == "TMUX_LUA_TOOLS_LAYOUT"
+#   tmux::layout "dotfiles" == "TMUX_DOTFILES_LAYOUT"
+# Arguments:
+#   target: the identifier of target (i.e.: window name) for which to construct a layout key
+# Outputs:
+#   Writes to stdout a tmux layout env var key constructed for the provided target
+#######################################
+function tmux::layout() {
+    local -r target="${1:-$(tmux::window_name)}"
+    local -r layout_key="$(str::upper "tmux_${target}_layout")"
+
+    echo "${layout_key//\-/_}"
+}

@@ -2,6 +2,7 @@
 
 set -Eeuo pipefail
 
+source "${BASH_LIB}/api/tmux.sh"
 source "${BASH_LIB}/args/validate.sh"
 source "${BASH_LIB}/core/str.sh"
 source "${BASH_LIB}/log/utils.sh"
@@ -110,7 +111,7 @@ extract_layout_from_name() {
 }
 
 extract_layout_from_env() {
-    local -r env_var="TMUX_$(str::upper "${TARGET}_LAYOUT")"
+    local -r env_var="$(tmux::layout "${TARGET}")"
     local -r env_val="$(tmux show-environment "${env_var}" 2> /dev/null || echo "")"
 
     echo "${env_val}" | cut -d "=" -f2

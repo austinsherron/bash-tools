@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC1107,SC2317
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/api/tmux.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/core/str.sh"
+source "${BASH_LIB}/log/utils.sh"
+
+
+## constants globals
+
+declare -A CMDS=([read]=read [set]=set [clear]=clear)
+
+function cmds() {
+    str::join "|" "${!CMDS[@]}"
+}
+
+USAGE="tmux-env $(cmds) -e var {-e var} {flags}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    CMD                 optional; defaults to "read";
+
+OPTIONS
+
+    -e, --env           optional, multi-valued, defaults to "all" if arg is omitted; specify vars to read; values are written to stdout in the form "var_name=value", unless --raw
+                        is specified
+    -f, --file          optional;
+
+FLAGS
+
+
+    -l, --layout
+    --raw               behaves contextually based on cmd; if provided when a) cmd=read: only write values to stdout, instead of "var_name=value"; b) cmd=set/clear: uses var names
+                        exactly as provided by callers
+    --force             used w/ set cmd; if provided, overwrite existing environment values
+    -h, --help          display this message
+help
+}
+
+
+## script globals
+
+CMD=""
+VARS=()
+LAYOUT=""
+FILE=""
+RAW=""
+FORCE=""
+
+VAR=""
+VAL=""
+
+## helpers
+
+function do_read() { tmux show-environment "${1}" 2> /dev/null ; }
+
+function read_var() {
+    local var="${1}"
+    local current
+
+    ulogger debug "tmux show-environment ${var}"
+    current="$(do_read "${var}")" || true
+
+    if [[ -n "${RAW}" ]] && [[ -n "${current}" ]]; then
+        echo "${current##*=}"
+    elif [[ -z "${RAW}" ]] && [[ -z "${current}" ]]; then
+        echo "${var}=\"\""
+    else
+        echo "${current}"
+    fi
+}
+
+function read_vars() {
+    read_var "${VAR}" || return 1
+}
+
+function exec::read() {
+    if [[ "${VAR}" != "all" ]]; then
+        read_vars ; return $?
+    fi
+
+    if [[ -z "${RAW}" ]]; then
+        ulogger debug "reading all"
+        tmux show-environment ; return $?
+    else
+        ulogger debug "reading all (raw)"
+        tmux show-environment | cut -d = -f2- ; return $?
+    fi
+}
+
+function set_var() {
+    local var="${1}"
+    local val="${2}"
+
+    local -r current="$(do_read "${var}")"
+
+    if [[ -n "${current}" ]] && [[ -z "${FORCE}" ]]; then
+       ulogger warn "skipping non-empty var: ${current}" && return 0
+    elif [[ -n "${current}" ]] && [[ -n "${FORCE}" ]]; then
+       ulogger warn "--force detected: overwriting ${current}"
+    fi
+
+    ulogger debug "tmux setenv ${var} ${val}"
+    tmux setenv "${var}" "${val}"
+}
+
+function exec::set() {
+    ulogger info "attempting to set ${VAR} to ${VAL}"
+    set_var "${VAR}" "${VAL}" || return 1
+}
+
+function clear_var() {
+    local var="${1}"
+    local -r val="$(do_read "${var}")"
+
+    if [[ -n "${val}" ]]; then
+        ulogger debug "tmux setenv -u ${var}"
+        tmux setenv -u "${var}"
+    else
+        ulogger debug "${var} is not set"
+    fi
+}
+
+function exec::clear() {
+    ulogger info "attempting to clear ${VAR}"
+    clear_var "${VAR}" || return 1
+}
+
+function process_var_name() {
+    local key="${1:-}"
+
+    if [[ -n "${LAYOUT}" ]]; then
+        # shellcheck disable=SC2119
+        VAR="$(tmux::layout "${key}")"
+    elif [[ -n "${RAW}" ]]; then
+        VAR="${key}"
+    else
+        VAR="TMUX_$(str::upper "${key}")"
+    fi
+}
+
+function process::read() {
+    local -r key="${1:-all}"
+
+    if [[ "${VAR}" == "all" ]] || [[ "${key}" == "all" ]]; then
+        VAR="all"
+        VARS=()
+    else
+        process_var_name "${key}"
+        VARS+=("${VAR}")
+    fi
+
+    ulogger trace "added var to read: ${VAR}"
+}
+
+function process::set() {
+    local var_str="${1:-}"
+
+    if [[ ! "${var_str}" =~ [^[:space:]]+=[^[:space:]]+ ]]; then
+        ulogger error "to set tmux env vars, provide vars/values in the form: var_key=value"
+        return 1
+    fi
+
+    process_var_name "${var_str%=*}"
+    VAL="${var_str#*=}"
+
+    ulogger debug "added key/value pair to set: ${VAR}=${VAL}"
+}
+
+function process::clear() {
+    local -r key="${1:-}"
+
+    process_var_name "${key}"
+    ulogger trace "added var to clear: ${VAR}"
+}
+
+function check_var_format() {
+    local var="${1}"
+
+    ulogger debug "checking format of var=${var}; CMD=${CMD}"
+
+    if [[ "${var}" =~ [^[:space:]]+=[^[:space:]]+ ]]; then
+        [[ -z "${CMD}" ]] && CMD="set"
+        [[ "${CMD}" == "read" ]] && ulogger error "CMD=${CMD} not valid with VAR format=${VAR}"
+    else
+        [[ -z "${CMD}" ]] && CMD="read"
+        [[ "${CMD}" == "set" ]] && ulogger error "CMD=${CMD} not valid with VAR format=${VAR}"
+    fi
+
+    ulogger debug "var format check complete; CMD=${CMD}"
+}
+
+
+function default_var() {
+    # NOTE: -l|--layout is provided, default to current window name
+    # FIXME: this is an implicit dependency on the impls of tmux layout scripts
+    [[ -n "${LAYOUT}" ]] && tmux::window_name || echo "all"
+}
+
+function process_vars() {
+    [[ ${#VARS[@]} -eq 0 ]] && VARS+=("$(default_var)")
+
+    for var in "${VARS[@]}"; do
+        ulogger debug "processing -e|--env '${var}'"
+
+        check_var_format "${var}"
+        "process::${CMD}" "${var}"
+        "exec::${CMD}"
+    done
+}
+
+function process_file_if_present() {
+    [[ -z "${FILE}" ]] && return 0
+    ulogger info "reading vars from file=${FILE}"
+
+    validate_file "${FILE}" "-f|--file" || return 1
+    readarray -t vars < "${FILE}"
+
+    for line in "${vars[@]}"; do
+        read -r var <<< "${line}"
+        VARS+=("${var}")
+    done
+}
+
+function process_cmd() { "exec::${CMD}" ; }
+
+## arg parsing
+
+LogFlags::process_log_flags "$@"
+LogEnv::set "type=tmux" "prefix=env"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -e|--env )
+      VARS+=("${2}") ; shift ; shift ;;
+    -f|--file)
+      FILE="${2}" ; shift ; shift ;;
+    -l|--layout)
+      LAYOUT="${2:-}" ; shift ; shift ;;
+    --raw)
+      RAW="true" ; shift ;;
+    --force)
+      FORCE="true" ; shift ;;
+    -v*|-q*)
+      shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    -*)
+      ulogger error "unrecognized argument: ${1}"
+      ulogger error "$(usage)"
+      exit 1 ;;
+    *)
+      CMD="${1}" ; shift ;;
+  esac
+done
+
+
+## arg validation
+
+validate_one_of_optional "cmd" "${CMD}" "${!CMDS[@]}" || exit 1
+
+## main
+
+process_file_if_present || exit 1
+process_vars || exit 1
+
