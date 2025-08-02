@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source "${BASH_LIB}/utils/env.sh"
+
 
 ## core ########################################################################
 
@@ -45,7 +47,11 @@ function sys::arch() {
 #   Write the current host's name to stdout
 #######################################
 function sys::hostname() {
-    hostname -s
+    if [[ -n "${USR_CONFIG+x}" ]] && [[ -f "${USR_CONFIG}/hostname" ]]; then
+        cat "${USR_CONFIG}/hostname"
+    else
+        hostname -s
+    fi
 }
 
 #######################################
