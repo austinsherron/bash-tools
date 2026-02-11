@@ -17,8 +17,7 @@ export CONFIRM_RC_NO_ALL=3
 function input::confirm() {    local prompt="${1:-Are you sure?}"
     local full_prompt="${prompt} [y/n] "
 
-    echo -n "${full_prompt}"
-    read -p -n 1 -r
+    read -p "${full_prompt}" -n 1 -r
     local rc=1
 
     [[ $REPLY =~ ^[y]$ ]] && rc=$CONFIRM_RC_YES
@@ -43,8 +42,7 @@ function input::global_confirm() {
     local prompt="${1:-Are you sure?}"
     local full_prompt="${prompt} [y/n/Y/N] "
 
-    echo -n "${full_prompt}"
-    read -p "" -n 1 -r
+    read -p "${full_prompt}" -n 1 -r
     local rc=1
 
     [[ $REPLY =~ ^[y]$ ]] && rc=$CONFIRM_RC_YES
@@ -56,3 +54,21 @@ function input::global_confirm() {
     return $rc
 }
 
+#######################################
+# Reads text from stdin.
+# Arguments:
+#   prompt: optional; the prompt string
+#   default: optional; the default value to use
+# Returns:
+#   The text read from stdin
+#######################################
+function input::text() {
+    local prompt="${1:-}"
+    local default="${2:+[${2}]}"
+
+    local full_prompt="${prompt}${default}"
+    full_prompt="${full_prompt:+${full_prompt} }"
+
+    read -p "${full_prompt}" -r
+    echo "${REPLY}"
+}
