@@ -65,9 +65,10 @@ TO_SHIFT_IDX="$(tmux::window_idx)"
 # shellcheck disable=SC2086
 NEW_IDX=$(($TO_SHIFT_IDX "${SIGN}" $NUM))
 
+SESSION_NAME="$(tmux::session_name)"
 WINDOW_NAME="$(tmux::window_name)"
-ulogger info "moving window=${WINDOW_NAME} from position $TO_SHIFT_IDX to $NEW_IDX"
+ulogger info "moving window=${WINDOW_NAME} in session=${SESSION_NAME} from position $TO_SHIFT_IDX to $NEW_IDX"
 
-ERR="$(tmux swap-window -d -s "${TO_SHIFT_IDX}" -t "${NEW_IDX}" 2>&1)" || true
+ERR="$(tmux swap-window -d -s "${SESSION_NAME}:${TO_SHIFT_IDX}" -t "${SESSION_NAME}:${NEW_IDX}" 2>&1)" || true
 if [[ -n "${ERR}" ]]; then ulogger error "${ERR}" && exit 1 ; fi
 

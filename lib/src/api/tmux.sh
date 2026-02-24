@@ -25,6 +25,15 @@ function tmux::window_idx() {
 }
 
 #######################################
+# Displays the current tmux session's name.
+# Outputs:
+#   Writes to stdout the current tmux session's name
+#######################################
+function tmux::session_name() {
+    tmux display-message -p '#S'
+}
+
+#######################################
 # Displays the tmux layout env var key for the provided target (i.e.: window name). For example:
 #   tmux::layout "lua-tools" == "TMUX_LUA_TOOLS_LAYOUT"
 #   tmux::layout "dotfiles" == "TMUX_DOTFILES_LAYOUT"
