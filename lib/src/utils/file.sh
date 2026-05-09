@@ -191,3 +191,45 @@ function path::is_child() {
     test "${path##"${parent}"}" != "${path}"
 }
 
+#######################################
+# Gets path relative to parent. For example:
+#
+#   $(path::get_relative \
+#       /parent/child/grandchild \
+#       /parent \
+#   ) == child/grandchild
+#
+# Arguments:
+#   path: the path from which to get a relative path
+#   parent: the parent path to which the returned path will be relative
+# Returns:
+#   path, relative to parent
+#######################################
+function path::get_relative() {
+    local path="${1}"
+    local parent="${2}"
+
+    if ! path::is_child "$path" "$parent"; then
+        return 1
+    fi
+
+    local relative="${path#"${parent}"}"
+    echo "${relative#/}"
+}
+
+
+#######################################
+# Gets the root of a path. For example:
+#
+#   $(path::get_root /some/nested/path) == some
+#
+# Arguments:
+#   path: the path from which to get the root
+# Returns:
+#   The root of path
+#######################################
+function path::get_root() {
+    local path="${1#/}"
+    echo "${path%%/*}"
+}
+

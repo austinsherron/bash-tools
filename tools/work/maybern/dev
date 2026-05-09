@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/api/git.sh"
+source "${BASH_LIB}/api/tmux.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/log/utils.sh"
+source "${BASH_LIB}/utils/env.sh"
+
+declare -A CMDS=(
+    [start]="start"
+    [stop]="stop"
+    [show]="show"
+    [hide]="hide"
+    [restart]="restart"
+    [destroy]="destroy"
+    [list]="list"
+)
+
+declare -A CMD_DESCRIPTIONS=(
+    [start]="  starts services in an existing dev session, or creates one if it doesn't exist"
+    [stop]="   stops services in the dev session"
+    [show]="   opens the dev session for the current worktree in a tmux popup"
+    [hide]="   closes the dev session tmux popup"
+    [restart]="executes [stop] and [start]"
+    [destroy]="executes [stop] and tears down the dev session"
+    [ls]="     lists dev windows"
+)
+
+declare -A CMD_ALIASES=(
+    [s]=start
+    [init]=start
+    [i]=start
+    [up]=start
+    [u]=start
+    [down]=stop
+    [d]=stop
+    [view]=show
+    [v]=show
+    [h]=hide
+    [close]=hide
+    [c]=hide
+    [x]=hide
+    [r]=restart
+    [kill]=destroy
+    [k]=destroy
+    [teardown]=destroy
+    [t]=destroy
+    [X]=destroy
+    [ls]=list
+    [l]=list
+)
+
+function cmds() {
+    str::join "|" "${!CMDS[@]}"
+}
+
+function cmd_descriptions() {
+    for cmd in "${!CMD_DESCRIPTIONS[@]}"; do
+        echo "    ${cmd}           ${CMD_DESCRIPTIONS[${cmd}]}"
+    done
+}
+
+USAGE="dev cmd"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+A utility for interacting w/ Maybern local development environments orchestrated via tmux.
+
+Each worktree gets its own window on a separate "dev" tmux server, where it can be viewed via popup overlay using "show".
+
+USAGE
+
+    ${USAGE}
+
+COMMANDS
+
+$(cmd_descriptions)
+
+POSITIONAL ARGUMENTS
+
+    CMD             the command to run
+
+FLAGS
+
+    -h, --help      display this message
+help
+}
+
+DEV_SERVER="dev"
+WORKTREE="$(git::worktree)"
+WINDOW_NAME="$(basename "${WORKTREE}")"
+BASE_PANE_IDX="$(tmux::base_pane_idx)"
+
+CMD=""
+
+function process_cmd() {
+    if [[ -n "${CMD}" ]]; then
+        ulogger error "CMD already set to ${CMD}"
+        exit 1
+    fi
+
+    local cmd="${1}"
+
+    check::one_of "${cmd}" "${!CMD_ALIASES[@]}" && cmd="${CMD_ALIASES[${cmd}]}"
+    validate_one_of "CMD" "${cmd}" "${!CMDS[@]}" || exit 1
+
+    CMD="${cmd}"
+}
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -v*|-q*)
+      shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    *)
+      process_cmd "${1}" ; shift ;;
+  esac
+done
+
+
+validate_required_positional "CMD" "${CMD}" || exit 1
+
+function _dtmux() {
+    tmux -L "${DEV_SERVER}" "$@"
+}
+
+function _has_window() {
+    _dtmux list-windows -F '#W' 2> /dev/null | grep -qF "${WINDOW_NAME}"
+}
+
+function _target() {
+    local pane="${1:-0}"
+
+    echo "${WINDOW_NAME}.$((BASE_PANE_IDX+pane))"
+}
+
+function _init() {
+    local backend="${WORKTREE}/backend"
+    local frontend="${WORKTREE}/frontend"
+
+    echo "initializing local env for worktree=${WORKTREE} (${WINDOW_NAME})"
+
+    if _dtmux list-sessions 2> /dev/null | grep -q .; then
+        _dtmux new-window -n "${WINDOW_NAME}" -c "${backend}"
+    else
+        _dtmux new-session -d -n "${WINDOW_NAME}" -c "${backend}"
+    fi
+
+    _dtmux split-window -h -t "${WINDOW_NAME}" -c "${frontend}"
+    _dtmux split-window -v -t "${WINDOW_NAME}" -c "${backend}"
+}
+
+function _start() {
+    _dtmux send-keys -t "$(_target)" 'just run-server' C-m
+    _dtmux send-keys -t "$(_target 1)" 'pnpm start:subdomains' C-m
+    _dtmux send-keys -t "$(_target 2)" 'just run-celery' C-m
+}
+
+function _stop() {
+    local window="${1:-${WINDOW_NAME}}"
+
+    for i in 0 1 2; do
+        _dtmux send-keys -t "${window}.$((BASE_PANE_IDX+i))" C-c 'clear' C-m
+    done
+}
+
+function _stop_others() {
+    local window
+
+    while IFS= read -r window; do
+        [[ "${window}" == "${WINDOW_NAME}" ]] && continue
+        _stop "${window}"
+    done < <(_dtmux list-windows -F '#W' 2> /dev/null)
+}
+
+function dev::start() {
+    _has_window || _init
+
+    _stop_others
+    _start
+}
+
+function dev::stop() {
+    _stop
+}
+
+function dev::show() {
+    tmux display-popup -E -w 99% -h 99% "tmux -L ${DEV_SERVER} attach \\; select-window -t '${WINDOW_NAME}'"
+}
+
+function dev::hide() {
+    _dtmux detach-client
+}
+
+function dev::restart() {
+    _stop
+    _start
+}
+
+function dev::destroy() {
+    _stop
+    _dtmux kill-window -t "${WINDOW_NAME}"
+}
+
+function dev::list() {
+    _dtmux list-windows -F '#W' 2> /dev/null || return 0
+}
+
+## main
+
+# ulogger info "executing dev cmd: ${CMD}"
+"dev::${CMD}"
+

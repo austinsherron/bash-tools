@@ -9,5 +9,5 @@ ulogger info "deploying shim module"
 deploy -s "${TOOLS_ROOT}/darwin/shim" -n mac-shims --pattern "*browser*" --pattern "google*"
 
 ulogger info "deploying work module"
-deploy -s "${TOOLS_ROOT}/work/granica" -n granica --pattern granica*
+deploy -s "${TOOLS_ROOT}/work/maybern" -n work
 
