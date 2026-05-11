@@ -11,8 +11,7 @@
 #   1 if function arguments aren't valid
 #######################################
 function str::lower() {
-    local str="${1}"
-    echo "${str}" |  tr '[:upper:]' '[:lower:]'
+    echo "${1,,}"
 }
 
 #######################################
@@ -25,8 +24,7 @@ function str::lower() {
 #   1 if function arguments aren't valid
 #######################################
 function str::upper() {
-    local str="${1}"
-    echo "${str}" |  tr '[:lower:]' '[:upper:]'
+    echo "${1^^}"
 }
 
 #######################################

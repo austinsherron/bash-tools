@@ -20,8 +20,16 @@ function git::in_repo() {
 #   Writes to stdout the root path of the main repository
 #######################################
 function git::root() {
-    local -r common_dir="$(git rev-parse --git-common-dir)"
-    dirname "$(realpath "${common_dir}")"
+    dirname "$(git rev-parse --path-format=absolute --git-common-dir)"
+}
+
+#######################################
+# Displays the name of the current repo.
+# Outputs:
+#   Writes to stdout the basename of the current repo.
+#######################################
+function git::repo_name() {
+    basename "$(git::root)"
 }
 
 #######################################
@@ -32,3 +40,4 @@ function git::root() {
 function git::worktree() {
     git rev-parse --show-toplevel
 }
+

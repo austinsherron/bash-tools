@@ -1,0 +1,262 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/api/git.sh"
+source "${BASH_LIB}/core/str.sh"
+source "${BASH_LIB}/utils/color.sh"
+
+
+usage() {
+    echo "usage: git branches [<options>]"
+}
+
+help() {
+cat <<help
+GIT-BRANCHES(1)
+
+NAME
+
+    git branches - List branches with worktree indicators.
+
+SYNOPSIS
+
+    git branches [-a|--all] [-r|--remotes] [--no-indicator] [-h|--help]
+
+DESCRIPTION
+
+    Lists branches similarly to "git branch", but uses distinct indicators
+    to show which worktree each branch is checked out in.
+
+    Indicators are configured per repo via ~/.config/git/branch-indicators.toml.
+    When no configuration is found for a repo (or a worktree within a repo),
+    indicators are randomly assigned from a default set.
+
+    Output uses a fixed 2-character prefix ("X " or "  ") that can be stripped
+    for piping to other commands:
+
+        git branches | fzf | cut -c3-
+
+OPTIONS
+
+    -a, --all           list both local and remote-tracking branches
+    -f, --fzf           pipe output to fzf and remove branch indicators from selection
+    -r, --remotes       list only remote-tracking branches
+
+FLAGS
+
+    --no-indicator      omit the leading indicator prefix (useful for scripting)
+    --raw               display raw text output
+    -h, --help          display this message
+help
+}
+
+
+CONFIG_FILE="${XDG_CONFIG_HOME}/git/config.toml"
+CONFIG="$(< "${CONFIG_FILE}")"
+REPO_NAME="$(git::repo_name)"
+
+FALLBACK_INDICATORS=('–' '+' '*' '•' '‣' '▪' '∙' '→')
+declare -A WORKTREE_BY_BRANCH            # branch (short) -> worktree name
+declare -A INDICATOR_BY_WORKTREE         # worktree name -> indicator
+declare -A COLOR_BY_WORKTREE             # worktree name -> color code
+USED_INDICATORS=""
+
+BRANCH=""
+WORKTREE=""
+
+REFS=("refs/heads/")
+RAW=""
+NO_INDICATOR=""
+OUTPUT=()
+FZF=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -a|--all)
+      REFS+=("refs/remotes/"); shift ;;
+    -f|--fzf)
+      FZF="true" ; shift ;;
+    --remotes)
+      REFS=("refs/remotes/") ; shift ;;
+    -n|--no-indicator)
+      NO_INDICATOR="true" ; shift ;;
+    -r|--raw)
+      RAW="true" ; shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    -*)
+      usage >&2 && exit 1 ;;
+    *)
+      usage >&2 && exit 1 ;;
+  esac
+done
+
+
+function _setup::build_worktree_by_branch() {
+    while IFS= read -r line; do
+        local branch
+        local worktree_name
+        local worktree_path="${line%% *}"
+
+        [[ "${line##* }" =~ \[([^]]+)\] ]] && branch="${BASH_REMATCH[1]}"
+        [[ -z "${branch}" ]] && continue
+
+        worktree_name="$(basename "${worktree_path}")"
+        WORKTREE_BY_BRANCH["${branch}"]="${worktree_name}"
+    done < <(git worktree list)
+}
+
+function _config::get() {
+    yq -p toml "${@}" <<< "${CONFIG}" 2>/dev/null
+}
+
+function _config::has_section() {
+    [[ "$(_config::get "has(\"${REPO_NAME}\")")" == "true" ]] || return 1
+    [[ "$(_config::get ".${REPO_NAME} | has(\"${1}\")")" == "true" ]]
+}
+
+function _config::section() {
+    local section="${1}"
+
+    local selector=".${REPO_NAME}.${section}"
+    selector+=' | to_entries'
+    selector+=' | .[]'
+    selector+=' | .key + " " + (.value | tostring)'
+
+    _config::get "${selector}"
+}
+
+function _config::load() {
+    [[ ! -f "${CONFIG_FILE}" ]] && return 0
+
+    if _config::has_section indicator; then
+        while IFS=' ' read -r worktree_name indicator; do
+            INDICATOR_BY_WORKTREE["${worktree_name}"]="${indicator}"
+            USED_INDICATORS+="${indicator}"
+        done < <(_config::section indicator)
+    fi
+
+    if _config::has_section color; then
+        while IFS=' ' read -r worktree_name color; do
+            COLOR_BY_WORKTREE["${worktree_name}"]="${color}"
+        done < <(_config::section color)
+    fi
+}
+
+function _pick_random_indicator() {
+    local available=()
+
+    for ind in "${FALLBACK_INDICATORS[@]}"; do
+        if [[ "${USED_INDICATORS}" != *"${ind}"* ]]; then
+            available+=("${ind}")
+        fi
+    done
+
+    # if all used, reset the pool
+    if [[ ${#available[@]} -eq 0 ]]; then
+        available=("${FALLBACK_INDICATORS[@]}")
+    fi
+
+    local idx=$(( RANDOM % ${#available[@]} ))
+    echo "${available[$idx]}"
+}
+
+
+function _setup::assign_indicators() {
+    _config::load
+
+    for worktree_name in "${WORKTREE_BY_BRANCH[@]}"; do
+        local indicator
+
+        if [[ -z "${INDICATOR_BY_WORKTREE[${worktree_name}]+x}" ]]; then
+            indicator="$(_pick_random_indicator "${USED_INDICATORS}")"
+            INDICATOR_BY_WORKTREE["${worktree_name}"]="${indicator}"
+            USED_INDICATORS+="${indicator}"
+        fi
+    done
+}
+
+function _should_display_branch() {
+    # display branch if it has a value, we found its worktree, it's not a remote HEAD pointer
+    [[ -n "${BRANCH}" ]] && [[ "${BRANCH}" != */HEAD ]] && [[ -n "$WORKTREE" ]]
+}
+
+function _is_remote() {
+    [[ "${1}" = "refs/remotes/" ]]
+}
+
+function _handle_remote_branch() {
+    local display="${BRANCH}"
+
+    # remote branches are never "checked out" in the worktree sense
+    if [[ -n "${NO_INDICATOR}" ]]; then
+        OUTPUT+=("${display}")
+    else
+        OUTPUT+=("  ${display}")
+    fi
+}
+
+function _get_indicator() {
+    local indicator="${INDICATOR_BY_WORKTREE[${WORKTREE}]:-}"
+
+    if [[ -n "${NO_INDICATOR}" ]] || [[ -n "${RAW}" ]]; then
+        indicator=""
+    elif [[ -n "${indicator}" ]]; then
+        indicator="${indicator} "
+    else
+        indicator="  "
+    fi
+
+    echo "${indicator}"
+}
+
+function _handle_local_branch() {
+    if [[ -n "${RAW}" ]]; then
+        OUTPUT+=("${BRANCH}")
+        return 0
+    fi
+
+    local indicator
+    local branch="${BRANCH}"
+    local color="${COLOR_BY_WORKTREE["${WORKTREE}"]:-}"
+
+    indicator="$(_get_indicator)"
+    [[ -n "${color}" ]] && branch="$(color::ize "${color}" "${branch}")"
+
+    OUTPUT+=("${indicator}${branch}")
+}
+
+function _build_output() {
+    for ref_prefix in "${REFS[@]}"; do
+        while IFS= read -r branch; do
+            BRANCH="${branch}"
+            WORKTREE="${WORKTREE_BY_BRANCH[${BRANCH}]:-" "}"
+
+            ! _should_display_branch && continue
+
+            if _is_remote "${ref_prefix}" ; then
+                _handle_remote_branch 
+            else
+                _handle_local_branch
+            fi
+        done < <(git for-each-ref --sort=-committerdate --format='%(refname:short)' "${ref_prefix}")
+    done
+}
+
+function _main::display_branches() {
+    _build_output
+
+    if [[ "${FZF}" = "true" ]]; then
+        printf '%s\n' "${OUTPUT[@]}" | fzf --ansi | awk '{print $NF}'
+    else
+        printf '%s\n' "${OUTPUT[@]}"
+    fi
+}
+
+## main
+
+_setup::build_worktree_by_branch
+_setup::assign_indicators
+_main::display_branches
+
