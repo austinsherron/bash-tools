@@ -240,7 +240,7 @@ function _build_output() {
             else
                 _handle_local_branch
             fi
-        done < <(git for-each-ref --sort=-committerdate --format='%(refname:short)' "${ref_prefix}")
+        done < <(git for-each-ref --sort=-refname:short --format='%(refname:short)' "${ref_prefix}")
     done
 }
 
@@ -248,7 +248,7 @@ function _main::display_branches() {
     _build_output
 
     if [[ "${FZF}" = "true" ]]; then
-        printf '%s\n' "${OUTPUT[@]}" | fzf --ansi | awk '{print $NF}'
+        printf '%s\n' "${OUTPUT[@]}" | fzf --ansi --tac | awk '{print $NF}'
     else
         printf '%s\n' "${OUTPUT[@]}"
     fi

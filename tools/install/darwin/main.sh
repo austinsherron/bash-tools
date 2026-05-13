@@ -5,6 +5,9 @@ set -Eeuo pipefail
 
 ulogger info "installing ${OS_TYPE} specific tool packages"
 
+ulogger info "deploying darwin module"
+deploy -s "${TOOLS_ROOT}/darwin" -n darwin
+
 ulogger info "deploying shim module"
 deploy -s "${TOOLS_ROOT}/darwin/shim" -n mac-shims --pattern "*browser*" --pattern "google*"
 

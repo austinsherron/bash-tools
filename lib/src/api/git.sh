@@ -15,7 +15,7 @@ function git::in_repo() {
 }
 
 #######################################
-# Displays the root path of the main/primary repository.
+# Displays the root path of the repo/primary worktree.
 # Outputs:
 #   Writes to stdout the root path of the main repository
 #######################################
@@ -41,3 +41,11 @@ function git::worktree() {
     git rev-parse --show-toplevel
 }
 
+#######################################
+# Displays the name of the active worktree.
+# Outputs:
+#   Writes to stdout the name of the active worktree
+#######################################
+function git::worktree_name() {
+    basename "$(git::worktree)"
+}
