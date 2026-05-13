@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/api/tmux.sh"
+source "${BASH_LIB}/args/validate.sh"
+
+usage() {
+    echo "usage: notify-terminal -t <title> [-m <message>]"
+}
+
+help() {
+cat <<help
+NAME
+
+    notify-terminal - Send a macOS notification annotated with the current tmux context.
+
+SYNOPSIS
+
+    notify-terminal -t|--title <title> [-m|--message <message>] [-h|--help]
+
+DESCRIPTION
+
+    Sends a macOS notification via terminal-notifier.
+
+    If run in a tmux session, the title is suffixed with the current tmux session and window names 
+    so it's clear which terminal context triggered the notification:
+
+        <title> (<session> > <window>)
+
+    Additionally, if run in a tmux session, default behavior is to suppress notifications if the 
+    user is in the same window as the notification's source.
+
+    Requires terminal-notifier to be installed.
+
+OPTIONS
+
+    -t, --title         notification title (required)
+    -m, --message       notification message body
+
+FLAGS
+
+    -f, --force         displays notifications regardless of the user's active tmux window
+    -h, --help          display this message
+help
+}
+
+
+TITLE=""
+MSG=""
+PARSING=""
+FORCE=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -t|--title)
+      declare -n PARSING=TITLE ; shift ;;
+    -m|--message)
+      declare -n PARSING=MSG ; shift ;;
+    -f|--force)
+      FORCE="true" ; shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    -*)
+      usage >&2 && exit 1 ;;
+    *)
+      PARSING+=" ${1}" ; shift ;;
+  esac
+done
+
+
+function _should_notify() {
+     ! tmux::is || [[ "$(tmux::location -sw -u)" != "$(tmux::location -sw)" ]]
+}
+
+validate_installed "terminal-notifier"
+validate_required "-t|--title" "${TITLE}"
+
+if tmux::is; then
+    TITLE="${TITLE} ($(tmux::location -sw -d " > "))"
+fi
+
+if _should_notify || [[ -n "${FORCE}" ]]; then
+    terminal-notifier -title "${TITLE}" -message "${MSG}"
+fi
+
