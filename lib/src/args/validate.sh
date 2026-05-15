@@ -2,7 +2,7 @@
 # shellcheck disable=SC1102
 
 source "${BASH_LIB}/args/check.sh"
-source "${BASH_LIB}/core/str.sh"
+source "${BASH_LIB}/core/_shared.sh"
 source "${BASH_LIB}/utils/env.sh"
 source "${BASH_LIB}/utils/sys.sh"
 
@@ -556,7 +556,7 @@ function validate_installed() {
 
     check::installed "$@" && return 0
 
-    local -r pkgs="$(str::join ", " "$@")"
+    local -r pkgs="$(_join ", " "$@")"
     log_error "${caller} requires that these packages be installed: ${pkgs}"
 }
 

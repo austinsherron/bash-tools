@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/core/_shared.sh"
+
 
 #######################################
 # Converts a string to lowercase.
@@ -71,9 +74,86 @@ function str::right_pad() {
 #   Writes joined string to stdout
 #######################################
 function str::join() {
-    local sep=${1-} f=${2-}
+    _join "$@"
+}
 
-    if shift 2; then
-        printf %s "$f" "${@/#/$sep}"
+#######################################
+# Strips characters from the ends of a string.
+#
+# Flags determine which ends are stripped. By default, -d is stripped from both 
+# ends.
+# Arguments:
+#   -s: the characters to strip
+#   -l: if provided, strip only the beginning of the string
+#   -r: if provided, strip only the end of the string
+#   str: the string to strip (positional)
+# Outputs:
+#   Writes the stripped string to stdout
+#######################################
+function str::strip() {
+    local str
+    local to_strip=" "
+
+    local l="true"
+    local r="true"
+
+    local OPTIND=1
+    while getopts "s:lr" opt; do
+      case $opt in
+        s) to_strip="${OPTARG}" ;;
+        l) r="" ;;
+        r) l="" ;;
+        :) ulogger error "arg required for -s" >&2 ; return 1 ;;
+        \?) ulogger error "valid flags are -slr" >&2 ; return 1 ;;
+      esac
+    done
+    shift $((OPTIND - 1))
+
+    str="${1-}"
+    validate_required "str" "${str}"
+
+    if [[ -z "${l}" ]] && [[ -z "${r}" ]]; then
+        l="true"
+        r="true"
     fi
+
+    [[ -n "${l}" ]] && str="${str#"${to_strip}"}"
+    [[ -n "${r}" ]] && str="${str%"${to_strip}"}"
+
+    echo "${str}"
+}
+
+#######################################
+# Replaces characters in the provided string.
+#
+# Globals:
+#   str: the string in which to replace characters (positional)
+#   -s: the characters to replace
+#   -t: the characters w/ which to replace
+# Outputs:
+#   Writes the updated string to stdout
+#######################################
+function str::replace() {
+    local str
+    local source
+    local target
+
+    local OPTIND=1
+    while getopts "s:t:" opt; do
+      case $opt in
+        s) source="${OPTARG}" ;;
+        t) target="${OPTARG}" ;;
+        :) ulogger error "arg required for -s/-t" >&2 ; return 1 ;;
+        \?) ulogger error "valid flags are -st" >&2 ; return 1 ;;
+      esac
+    done
+    shift $((OPTIND - 1))
+
+    str="${1-}"
+
+    validate_required "str" "${str}"
+    validate_required "-s" "${source}"
+    validate_required "-t" "${target}"
+
+    echo "${str//"${source}"/"${target}"}"
 }

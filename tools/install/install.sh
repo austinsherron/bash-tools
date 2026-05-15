@@ -43,6 +43,7 @@ function deploy_ulogger() {
 }
 
 function deploy_common() {
+    deploy -s "${TOOLS_ROOT}/claude" -n claude
     deploy -s "${TOOLS_ROOT}/git" -n git
     deploy -s "${TOOLS_ROOT}/package/manage" -n pkgmgr
     deploy -s "${TOOLS_ROOT}/system/config" -n sys-config

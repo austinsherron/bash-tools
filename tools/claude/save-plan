@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+trap 'ulogger error "error on line $LINENO (exit $?)"' ERR
+
+source "${BASH_LIB}/api/git.sh"
+source "${BASH_LIB}/core/str.sh"
+
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="claude"
+export ULOGGER_PREFIX="plan"
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Claude Code hook script for persisting plan content. On ExitPlanMode, writes the
+    plan markdown to \${CLAUDE_DATA_DIR}/plans/<repo-name>/.
+
+USAGE
+
+    Configure as a claude PostToolUse hook with matcher "ExitPlanMode".
+help
+}
+
+
+function _get_plan_from_transcript() {
+    # fallback when tool_input.plan is empty; extract the most recent plan content from the
+    # transcript by looking for the last Write tool_use to a .md file in assistant messages.
+    jq -r '
+        select(.role == "assistant")
+        | .content[]?
+        | select(.type == "tool_use" and .name == "Write")
+        | .input.content // empty
+    ' "${TRANSCRIPT_PATH}" 2>/dev/null | tail -1
+}
+
+function _make_plan_content() {
+    local content
+    content="$(echo "${INPUT}" | jq -r '.tool_input.plan // empty')"
+
+    if [[ -z "$content" && -n "${TRANSCRIPT_PATH}" && -f "${TRANSCRIPT_PATH}" ]]; then
+        content="$(_get_plan_from_transcript)"
+    fi
+
+    echo "${content}"
+}
+
+function _make_plan_file_name() {
+    local title
+    local worktree=""
+
+    title="$(head -n1 <<< "${PLAN_CONTENT}")"
+    git::uses_worktrees && worktree="_$(git::worktree_name)"
+
+    if [[ -z "${title}" ]]; then
+        title="${SESSION_ID:0:8}"
+    else
+        title="$(str::strip -s "# " -l "${title}")"
+        title="$(str::replace -s " " -t "-" "${title}")"
+        title="$(str::lower "${title}")"
+    fi
+
+    echo "${REPO_PLAN_DIR}/${title}${worktree}.md"
+}
+
+
+PLANS_ROOT="${CLAUDE_DATA_DIR}/plans"
+REPO_PLAN_DIR="${PLANS_ROOT}/$(git::repo_name)"
+
+INPUT="$(cat)"
+# Extract fields from hook input
+SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // empty')"
+TRANSCRIPT_PATH="$(echo "$INPUT" | jq -r '.transcript_path // empty')"
+PLAN_CONTENT="$(_make_plan_content)"
+PLAN_FILE="$(_make_plan_file_name)"
+
+## main
+
+if [[ -z "${PLAN_CONTENT}" ]]; then
+    ulogger warn "no plan content"
+    exit 0
+fi
+
+mkdir -p "${REPO_PLAN_DIR}"
+echo "${PLAN_CONTENT}" > "${PLAN_FILE}"
+
+ulogger info "saved plan to '${PLAN_FILE}'"
+

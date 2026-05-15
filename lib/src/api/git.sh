@@ -49,3 +49,17 @@ function git::worktree() {
 function git::worktree_name() {
     basename "$(git::worktree)"
 }
+
+#######################################
+# Checks if the current repo uses worktrees.
+#
+# A repo is considered to use worktrees if it has > 1 worktree.
+# Returns:
+#   0 if the current repo uses worktrees, 1 otherwise 
+#######################################
+function git::uses_worktrees() {
+    local worktree_count
+    worktree_count="$(git worktree list | wc -l)"
+
+    [[ "${worktree_count}" -gt 1 ]]
+}
