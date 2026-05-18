@@ -233,3 +233,67 @@ function path::get_root() {
     echo "${path%%/*}"
 }
 
+#######################################
+# Gets a path's file extension.
+# Arguments:
+#   path: the path from which to get the extension
+# Outputs:
+#   The extension of the file at the provided path, or empty string if it 
+#   doesn't have one.
+#######################################
+function path::ext() {
+    local path="${1}"
+    local ext="${path##*.}"
+
+    if [[ "${path}" != "${ext}" ]]; then
+        echo "${ext}"
+    fi
+}
+
+#######################################
+# Checks if a path has a file extension.
+#
+# If ext is provided, checks if the path has that specific extension, otherwise
+# checks if it has any extension.
+# Arguments:
+#   path: the path from which to get the extension
+#   ext: optional; if provided check if path has this extension
+# Returns:
+#   If ext is provided, 0 if path has that extension, 1 otherwise 
+#   If ext is not provided, 0 if path has any extension, 1 otherwise 
+#######################################
+function path::has_ext() {
+    local path="${1}"
+    local ext="${2:-}"
+    local path_ext ; path_ext="$(path::ext "${path}")"
+
+    if [[ -n "${ext}" ]]; then
+        [[ "${path_ext}" = "${ext}" ]]
+    else
+        [[ -n "${path_ext}" ]]
+    fi
+}
+
+
+#######################################
+# Removes special characters from the provided file path.
+# Arguments:
+#   path: The string file path to sanitize.
+# Outputs:
+#   The provided file path w/ special characters removed.
+#######################################
+function path::sanitize() {
+    printf '%s' "${1//[^A-Za-z0-9._\/-]/}"
+}
+
+#######################################
+# Removes special characters from the provided file name.
+# Arguments:
+#   path: The string file name to sanitize.
+# Outputs:
+#   The provided file name w/ special characters removed.
+#######################################
+function path::sanitize_name() {
+    printf '%s' "${1//[^A-Za-z0-9._-]/}"
+}
+

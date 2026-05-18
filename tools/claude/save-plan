@@ -5,6 +5,7 @@ trap 'ulogger error "error on line $LINENO (exit $?)"' ERR
 
 source "${BASH_LIB}/api/git.sh"
 source "${BASH_LIB}/core/str.sh"
+source "${BASH_LIB}/utils/file.sh"
 
 
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="claude"
@@ -12,17 +13,112 @@ export ULOGGER_PREFIX="plan"
 
 help() {
 cat <<help
+NAME
+
+    save-plan - Persist Claude Code plans to disk.
+
+SYNOPSIS
+
+    save-plan -f|--file <path> [-t <title>] [-r <repo>|-d <dir>]
+    save-plan [-r <repo>|-d <dir>]      # hook mode (stdin)
+    save-plan -h|--help
+
 DESCRIPTION
 
-    Claude Code hook script for persisting plan content. On ExitPlanMode, writes the
-    plan markdown to \${CLAUDE_DATA_DIR}/plans/<repo-name>/.
+    Writes plan markdown to \${CLAUDE_DATA_DIR}/plans/<repo>/<title>.md.
 
-USAGE
+    Runs in two modes:
 
-    Configure as a claude PostToolUse hook with matcher "ExitPlanMode".
+      * Hook mode: reads PostToolUse JSON from stdin (configure as a Claude Code hook with matcher
+        "ExitPlanMode"). Plan content comes from .tool_input.plan, falling back to the last Write
+        tool_use of an .md file in the transcript when .tool_input.plan is empty.
+      * CLI mode: reads plan content from the file passed via -f|--file.
+
+    If --title is not provided, the output filename is derived from the plan's first line: leading
+    "# " and "Plan: " are stripped, the result is lowercased, spaces are replaced with dashes, and
+    special characters are sanitized. A ".md" extension is appended if absent.
+
+OPTIONS
+
+    -f, --file          read plan content from this file (required in CLI mode)
+    -t, --title         filename (with or without extension) for the saved plan
+    -r, --repo          subdirectory of \${CLAUDE_DATA_DIR}/plans to write to
+    -d, --dir           absolute directory to write the plan to (overrides --repo)
+
+FLAGS
+
+    -h, --help          display this message
 help
 }
 
+
+PLANS_ROOT="${CLAUDE_DATA_DIR}/plans"
+PLAN_DIR=""
+SESSION_ID=""
+TRANSCRIPT_PATH=""
+PLAN_CONTENT=""
+PLAN_FILE_IN=""
+PLAN_FILE_OUT=""
+PLAN_TITLE=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -f|--file)
+      PLAN_FILE_IN="${2}" ; shift ; shift ;;
+    -t|--title)
+      PLAN_TITLE="${2}" ; shift ; shift ;;
+    -r|--repo)
+      PLAN_DIR="${PLANS_ROOT}/${2}" ; shift ; shift ;;
+    -d|--dir)
+      PLAN_DIR="${2}" ; shift ; shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    *)
+      usage >&2 && exit 1 ;;
+  esac
+done
+
+
+function _make_title_from_content() {
+    local title
+
+    title="$(head -n1 <<< "${PLAN_CONTENT}")"
+
+    if [[ -z "${title}" ]] && [[ -n "${SESSION_ID}" ]]; then
+        title="${SESSION_ID:0:8}"
+    elif [[ -z "${title}" ]]; then
+        ulogger error "unable to determine plan title"
+        return 1
+    else
+        title="$(str::strip -s "# " -l "${title}")"
+        title="$(str::strip -s "Plan: " -l "${title}")"
+        title="$(str::replace -s " " -t "-" "${title}")"
+        title="$(str::lower "${title}")"
+        title="$(path::sanitize_name "${title}")"
+    fi
+
+    echo "${title}"
+}
+
+function _make_plan_file_path() {
+    local title
+
+    if [[ -n "${PLAN_TITLE}" ]]; then
+        title="${PLAN_TITLE}"
+    else
+        title="$(_make_title_from_content)" || return 1
+    fi
+
+    path::has_ext "${title}" || title+=".md"
+    PLAN_FILE_OUT="${PLAN_DIR}/${title}"
+}
+
+function _get_plan_content_from_file() {
+    validate_required "-f|--file" "${PLAN_FILE_IN}" 
+    validate_file "${PLAN_FILE_IN}" "-f|--file"
+
+    PLAN_CONTENT="$(< "${PLAN_FILE_IN}")"
+}
 
 function _get_plan_from_transcript() {
     # fallback when tool_input.plan is empty; extract the most recent plan content from the
@@ -35,55 +131,52 @@ function _get_plan_from_transcript() {
     ' "${TRANSCRIPT_PATH}" 2>/dev/null | tail -1
 }
 
-function _make_plan_content() {
-    local content
-    content="$(echo "${INPUT}" | jq -r '.tool_input.plan // empty')"
+function _get_plan_content_from_pipe() {
+    local input ; input="$(< /dev/stdin)"
 
-    if [[ -z "$content" && -n "${TRANSCRIPT_PATH}" && -f "${TRANSCRIPT_PATH}" ]]; then
-        content="$(_get_plan_from_transcript)"
+    SESSION_ID="$(echo "${input}" | jq -r '.session_id // empty')"
+    TRANSCRIPT_PATH="$(echo "${input}" | jq -r '.transcript_path // empty')"
+    PLAN_CONTENT="$(echo "${input}" | jq -r '.tool_input.plan // empty')"
+
+    if [[ -z "${PLAN_CONTENT}" && -n "${TRANSCRIPT_PATH}" && -f "${TRANSCRIPT_PATH}" ]]; then
+        PLAN_CONTENT="$(_get_plan_from_transcript)"
     fi
-
-    echo "${content}"
 }
 
-function _make_plan_file_name() {
-    local title
-    local worktree=""
-
-    title="$(head -n1 <<< "${PLAN_CONTENT}")"
-    git::uses_worktrees && worktree="_$(git::worktree_name)"
-
-    if [[ -z "${title}" ]]; then
-        title="${SESSION_ID:0:8}"
+function _get_plan_content() {
+    if [[ -t 0 ]]; then
+        _get_plan_content_from_file
     else
-        title="$(str::strip -s "# " -l "${title}")"
-        title="$(str::replace -s " " -t "-" "${title}")"
-        title="$(str::lower "${title}")"
+        _get_plan_content_from_pipe
     fi
-
-    echo "${REPO_PLAN_DIR}/${title}${worktree}.md"
 }
 
+function _setup::set_defaults() {
+    if [[ -z "${PLAN_DIR}" ]]; then
+        PLAN_DIR="${PLANS_ROOT}/$(git::repo_name)"
+    fi
+}
 
-PLANS_ROOT="${CLAUDE_DATA_DIR}/plans"
-REPO_PLAN_DIR="${PLANS_ROOT}/$(git::repo_name)"
+function _setup::read_input() {
+    _get_plan_content
+    _make_plan_file_path || return 1
+}
 
-INPUT="$(cat)"
-# Extract fields from hook input
-SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // empty')"
-TRANSCRIPT_PATH="$(echo "$INPUT" | jq -r '.transcript_path // empty')"
-PLAN_CONTENT="$(_make_plan_content)"
-PLAN_FILE="$(_make_plan_file_name)"
+function _main::save_plan() {
+    mkdir -p "${PLAN_DIR}"
+    echo "${PLAN_CONTENT}" >| "${PLAN_FILE_OUT}"
+    ulogger info "saved plan to '${PLAN_FILE_OUT}'"
+}
 
 ## main
+
+_setup::set_defaults
+_setup::read_input || exit 1
 
 if [[ -z "${PLAN_CONTENT}" ]]; then
     ulogger warn "no plan content"
     exit 0
 fi
 
-mkdir -p "${REPO_PLAN_DIR}"
-echo "${PLAN_CONTENT}" > "${PLAN_FILE}"
-
-ulogger info "saved plan to '${PLAN_FILE}'"
+_main::save_plan
 
