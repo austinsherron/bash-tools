@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 source "${BASH_LIB}/api/tmux.sh"
 source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/utils/apps.sh"
 
 usage() {
     echo "usage: notify-terminal -t <title> [-m <message>]"
@@ -29,7 +30,8 @@ DESCRIPTION
         <title> (<session> > <window>)
 
     Additionally, if run in a tmux session, default behavior is to suppress notifications if the 
-    user is in the same window as the notification's source.
+    user is in the same window as the notification's source and the terminal app is focused 
+    (requires TERM_APP env var to be set).
 
     Requires terminal-notifier to be installed.
 
@@ -69,8 +71,20 @@ while [[ $# -gt 0 ]]; do
 done
 
 
+function _is_user_in_source_window() {
+    [[ "$(tmux::location -sw -u)" == "$(tmux::location -sw)" ]]
+}
+
+function _is_terminal_app_focused() {
+    [[ -n "${TERM_APP+x}" ]] && [[ "$(apps::front)" == "${TERM_APP}" ]]
+}
+
+function _should_notify_in_tmux() {
+    ! _is_terminal_app_focused || ! _is_user_in_source_window
+}
+
 function _should_notify() {
-     ! tmux::is || [[ "$(tmux::location -sw -u)" != "$(tmux::location -sw)" ]]
+     ! tmux::is || _should_notify_in_tmux
 }
 
 validate_installed "terminal-notifier"
