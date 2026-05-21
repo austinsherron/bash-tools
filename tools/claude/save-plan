@@ -95,6 +95,7 @@ function _make_title_from_content() {
         title="$(str::replace -s " " -t "-" "${title}")"
         title="$(str::lower "${title}")"
         title="$(path::sanitize_name "${title}")"
+        title="$(str::squeeze "${title}" "-")"
     fi
 
     echo "${title}"

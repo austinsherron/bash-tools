@@ -130,6 +130,7 @@ function str::strip() {
 #   str: the string in which to replace characters (positional)
 #   -s: the characters to replace
 #   -t: the characters w/ which to replace
+#   -z: if provided, calls str::squeeze on output
 # Outputs:
 #   Writes the updated string to stdout
 #######################################
@@ -137,14 +138,16 @@ function str::replace() {
     local str
     local source
     local target
+    local squeeze=""
 
     local OPTIND=1
-    while getopts "s:t:" opt; do
+    while getopts "s:t:z" opt; do
       case $opt in
         s) source="${OPTARG}" ;;
         t) target="${OPTARG}" ;;
+        z) squeeze="true" ;;
         :) ulogger error "arg required for -s/-t" >&2 ; return 1 ;;
-        \?) ulogger error "valid flags are -st" >&2 ; return 1 ;;
+        \?) ulogger error "valid flags are -stz" >&2 ; return 1 ;;
       esac
     done
     shift $((OPTIND - 1))
@@ -155,5 +158,26 @@ function str::replace() {
     validate_required "-s" "${source}"
     validate_required "-t" "${target}"
 
-    echo "${str//"${source}"/"${target}"}"
+    local out="${str//"${source}"/"${target}"}"
+
+    if [[ -z "${squeeze}" ]]; then
+        echo "${out}"
+    else
+        str::squeeze "${out}" "${target}"
+    fi
+}
+
+#######################################
+# Deduplicates sequential repetitions of char in str.
+# Arguments:
+#   str: the string in which to deduplicate characters
+#   char: the character to deduplicate
+# Outputs:
+#   Writes to stdout the provided string w/ sequential repetitions of char deduplicated
+#######################################
+function str::squeeze() {
+    local str="${1}"
+    local char="${2}"
+
+    echo "${str}" | tr -s "${char}"
 }
