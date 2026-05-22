@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/core/_shared.sh"
 
 
 validate_installed git.sh git
@@ -33,6 +34,15 @@ function git::repo_name() {
 }
 
 #######################################
+# Displays the worktree parent directory.
+# Outputs:
+#   Writes the worktree parent directory to stdout.
+#######################################
+function git::worktree_root() {
+    dirname "$(git::root)"
+}
+
+#######################################
 # Displays the path of the active worktree.
 # Outputs:
 #   Writes to stdout the path of the active worktree
@@ -62,4 +72,30 @@ function git::uses_worktrees() {
     worktree_count="$(git worktree list | wc -l)"
 
     [[ "${worktree_count}" -gt 1 ]]
+}
+
+#######################################
+# Displays the current repo's worktrees.
+# Arguments:
+#   -n: If provided, display worktree names, instead of paths
+# Outputs:
+#   Writes to stdout the current repo's worktrees
+#######################################
+function git::list_worktrees() {
+    local name_only=""
+
+    local OPTIND=1
+    while getopts "n" opt; do
+      case $opt in
+        n) name_only="true" ;;
+        \?) ulogger error "valid flags are -n" >&2 ; return 1 ;;
+      esac
+    done
+    shift $((OPTIND - 1))
+
+    if [[ -z "${name_only}" ]]; then
+        git worktree list | awk '{print $1}'
+    else
+        git worktree list | awk '{print $1}' | xargs basename
+    fi
 }

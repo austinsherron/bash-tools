@@ -17,6 +17,7 @@ declare -A CMDS=(
     [restart]="restart"
     [destroy]="destroy"
     [list]="list"
+    [new]="new"
 )
 
 declare -A CMD_DESCRIPTIONS=(
@@ -27,6 +28,7 @@ declare -A CMD_DESCRIPTIONS=(
     [restart]="executes [stop] and [start]"
     [destroy]="executes [stop] and tears down the dev session"
     [ls]="     lists dev windows"
+    [new]="    opens a new worktree dev window in the current session"
 )
 
 declare -A CMD_ALIASES=(
@@ -51,6 +53,7 @@ declare -A CMD_ALIASES=(
     [X]=destroy
     [ls]=list
     [l]=list
+    [n]=new
 )
 
 function cmds() {
@@ -145,19 +148,27 @@ function _target() {
 }
 
 function _init() {
-    local backend="${WORKTREE}/backend"
-    local frontend="${WORKTREE}/frontend"
+    local cmd="_dtmux"
+    local pane_dirs=()
 
-    echo "initializing local env for worktree=${WORKTREE} (${WINDOW_NAME})"
+    local OPTIND=1
+    while getopts "c:d:" opt; do
+      case $opt in
+        c) cmd="${OPTARG}" ;;
+        d) pane_dirs+=("${OPTARG}") ;;
+        \?) ulogger error "valid flags are -cd" >&2 ; return 1 ;;
+      esac
+    done
+    shift $((OPTIND - 1))
 
-    if _dtmux list-sessions 2> /dev/null | grep -q .; then
-        _dtmux new-window -n "${WINDOW_NAME}" -c "${backend}"
+    if $cmd list-sessions 2> /dev/null | grep -q .; then
+        $cmd new-window -n "${WINDOW_NAME}" -c "${WORKTREE}/${pane_dirs[0]:-backend}"
     else
-        _dtmux new-session -d -n "${WINDOW_NAME}" -c "${backend}"
+        $cmd new-session -d -n "${WINDOW_NAME}" -c "${WORKTREE}/${pane_dirs[0]:-backend}"
     fi
 
-    _dtmux split-window -h -t "${WINDOW_NAME}" -c "${frontend}"
-    _dtmux split-window -v -t "${WINDOW_NAME}" -c "${backend}"
+    $cmd split-window -h -t "${WINDOW_NAME}" -c "${WORKTREE}/${pane_dirs[1]:-frontend}"
+    $cmd split-window -v -t "${WINDOW_NAME}" -c "${WORKTREE}/${pane_dirs[2]:-backend}"
 }
 
 function _start() {
@@ -195,7 +206,8 @@ function dev::stop() {
 }
 
 function dev::show() {
-    tmux display-popup -E -w 99% -h 99% "tmux -L ${DEV_SERVER} attach \\; select-window -t '${WINDOW_NAME}'"
+    tmux display-popup -E -w 99% -h 99% \
+        "TMUX= TERM=screen-256color tmux -L ${DEV_SERVER} select-window -t '${WINDOW_NAME}' \\; attach"
 }
 
 function dev::hide() {
@@ -216,8 +228,17 @@ function dev::list() {
     _dtmux list-windows -F '#W' 2> /dev/null || return 0
 }
 
+function dev::new() {
+    local worktree_name
+    worktree_name="$(git::list_worktrees -n | fzf --ansi --tac)"
+
+    WORKTREE="$(git::worktree_root)/${worktree_name}"
+    WINDOW_NAME="$(basename "${WORKTREE}")"
+
+    _init -c "tmux" -d "backend" -d "backend" -d "/"
+}
+
 ## main
 
-# ulogger info "executing dev cmd: ${CMD}"
 "dev::${CMD}"
 
