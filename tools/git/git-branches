@@ -6,6 +6,10 @@ source "${BASH_LIB}/api/git.sh"
 source "${BASH_LIB}/core/str.sh"
 source "${BASH_LIB}/utils/color.sh"
 
+source "${BASH_TOOLS}/tools/git/_helpers/config.sh"
+source "${BASH_TOOLS}/tools/git/_helpers/view.sh"
+source "${BASH_TOOLS}/tools/git/_helpers/worktrees.sh"
+
 
 usage() {
     echo "usage: git branches [<options>]"
@@ -21,7 +25,9 @@ NAME
 
 SYNOPSIS
 
-    git branches [-a|--all] [-r|--remotes] [--no-indicator] [-h|--help]
+    git branches [-a|--all] [-d|--default] [-f|--fzf] [--remotes]
+                 [-n|--no-indicator] [-r|--raw] [-v|--verbose] [--hidden]
+    git branches -h|--help
 
 DESCRIPTION
 
@@ -32,49 +38,64 @@ DESCRIPTION
     When no configuration is found for a repo (or a worktree within a repo),
     indicators are randomly assigned from a default set.
 
+    Branches checked out in a worktree listed under [<repo>].hide in
+    ~/.config/git/config.toml are omitted unless --hidden is given.
+
     Output uses a fixed 2-character prefix ("X " or "  ") that can be stripped
     for piping to other commands:
 
         git branches | fzf | cut -c3-
 
-OPTIONS
-
-    -a, --all           list both local and remote-tracking branches
-    -f, --fzf           pipe output to fzf and remove branch indicators from selection
-    -r, --remotes       list only remote-tracking branches
-
 FLAGS
 
-    --no-indicator      omit the leading indicator prefix (useful for scripting)
-    --raw               display raw text output
+    -a, --all           list both local and remote-tracking branches
+    -d, --default       display configured worktree default branches
+    -f, --fzf           pipe output to fzf and remove branch indicators from
+                        selection
+        --remotes       list only remote-tracking branches
+    -n, --no-indicator  omit the leading indicator prefix (useful for scripting)
+    -r, --raw           display raw text output
+    -v, --verbose       append per-branch status after each branch:
+                        "branch [worktree] X Y", where [worktree] is the branch's
+                        checked-out worktree (omitted if none), X is ✓ when the
+                        branch is up to date with local master, ⨯ if behind, and
+                        Y is ○ when the worktree is clean, ● if it has uncommitted
+                        changes (shown only for branches checked out in a worktree)
+        --hidden        include branches checked out in worktrees listed under
+                        [<repo>].hide (hidden by default)
     -h, --help          display this message
 help
 }
 
 
-CONFIG_FILE="${XDG_CONFIG_HOME}/git/config.toml"
-CONFIG="$(< "${CONFIG_FILE}")"
-REPO_NAME="$(git::repo_name)"
-
 FALLBACK_INDICATORS=('–' '+' '*' '•' '‣' '▪' '∙' '→')
-declare -A WORKTREE_BY_BRANCH            # branch (short) -> worktree name
-declare -A INDICATOR_BY_WORKTREE         # worktree name -> indicator
-declare -A COLOR_BY_WORKTREE             # worktree name -> color code
-USED_INDICATORS=""
 
 BRANCH=""
 WORKTREE=""
 
 REFS=("refs/heads/")
 RAW=""
+SHOW_DEFAULTS=""
 NO_INDICATOR=""
-OUTPUT=()
 FZF=""
+VERBOSE=""
+SHOW_HIDDEN=""
+
+OUTPUT=()
+VALUES=()
+
+DEFAULTS=()
+OTHERS=()
+DEFAULT_VALUES=()
+OTHER_VALUES=()
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -a|--all)
-      REFS+=("refs/remotes/"); shift ;;
+      REFS+=("refs/remotes/")
+      SHOW_DEFAULTS="true" ; shift ;;
+    -d|--default)
+      SHOW_DEFAULTS="true" ; shift ;;
     -f|--fzf)
       FZF="true" ; shift ;;
     --remotes)
@@ -83,6 +104,10 @@ while [[ $# -gt 0 ]]; do
       NO_INDICATOR="true" ; shift ;;
     -r|--raw)
       RAW="true" ; shift ;;
+    -v|--verbose)
+      VERBOSE="true" ; shift ;;
+    --hidden)
+      SHOW_HIDDEN="true" ; shift ;;
     -h|--help)
       help && exit 0 ;;
     -*)
@@ -93,62 +118,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 
-function _setup::build_worktree_by_branch() {
-    while IFS= read -r line; do
-        local branch
-        local worktree_name
-        local worktree_path="${line%% *}"
-
-        [[ "${line##* }" =~ \[([^]]+)\] ]] && branch="${BASH_REMATCH[1]}"
-        [[ -z "${branch}" ]] && continue
-
-        worktree_name="$(basename "${worktree_path}")"
-        WORKTREE_BY_BRANCH["${branch}"]="${worktree_name}"
-    done < <(git worktree list)
-}
-
-function _config::get() {
-    yq -p toml "${@}" <<< "${CONFIG}" 2>/dev/null
-}
-
-function _config::has_section() {
-    [[ "$(_config::get "has(\"${REPO_NAME}\")")" == "true" ]] || return 1
-    [[ "$(_config::get ".${REPO_NAME} | has(\"${1}\")")" == "true" ]]
-}
-
-function _config::section() {
-    local section="${1}"
-
-    local selector=".${REPO_NAME}.${section}"
-    selector+=' | to_entries'
-    selector+=' | .[]'
-    selector+=' | .key + " " + (.value | tostring)'
-
-    _config::get "${selector}"
-}
-
-function _config::load() {
-    [[ ! -f "${CONFIG_FILE}" ]] && return 0
-
-    if _config::has_section indicator; then
-        while IFS=' ' read -r worktree_name indicator; do
-            INDICATOR_BY_WORKTREE["${worktree_name}"]="${indicator}"
-            USED_INDICATORS+="${indicator}"
-        done < <(_config::section indicator)
-    fi
-
-    if _config::has_section color; then
-        while IFS=' ' read -r worktree_name color; do
-            COLOR_BY_WORKTREE["${worktree_name}"]="${color}"
-        done < <(_config::section color)
-    fi
-}
-
 function _pick_random_indicator() {
     local available=()
 
     for ind in "${FALLBACK_INDICATORS[@]}"; do
-        if [[ "${USED_INDICATORS}" != *"${ind}"* ]]; then
+        if ! config::is_indicator_used "${ind}"; then
             available+=("${ind}")
         fi
     done
@@ -159,27 +133,47 @@ function _pick_random_indicator() {
     fi
 
     local idx=$(( RANDOM % ${#available[@]} ))
-    echo "${available[$idx]}"
+    echo "${available[${idx}]}"
 }
 
 
 function _setup::assign_indicators() {
-    _config::load
+    local worktrees=()
+    worktrees::all worktrees
 
-    for worktree_name in "${WORKTREE_BY_BRANCH[@]}"; do
-        local indicator
-
-        if [[ -z "${INDICATOR_BY_WORKTREE[${worktree_name}]+x}" ]]; then
-            indicator="$(_pick_random_indicator "${USED_INDICATORS}")"
-            INDICATOR_BY_WORKTREE["${worktree_name}"]="${indicator}"
-            USED_INDICATORS+="${indicator}"
+    for worktree_name in "${worktrees[@]}"; do
+        if ! config::has_indicator "${worktree_name}"; then
+            config::set_indicator "${worktree_name}" "$(_pick_random_indicator)"
         fi
     done
 }
 
+function _is_hidden() {
+    [[ -z "${SHOW_HIDDEN}" && -n "${WORKTREE}" ]] || return 1
+    config::is_hidden_worktree "${WORKTREE}"
+}
+
+function _is_current_worktree() {
+    [[ "${WORKTREE}" = "$(git::worktree_name)" ]]
+}
+
 function _should_display_branch() {
-    # display branch if it has a value, we found its worktree, it's not a remote HEAD pointer
-    [[ -n "${BRANCH}" ]] && [[ "${BRANCH}" != */HEAD ]] && [[ -n "$WORKTREE" ]]
+    # display branch if it has a value and it's not a remote HEAD pointer
+    if [[ -z "${BRANCH}" ]] || [[ "${BRANCH}" = */HEAD ]]; then
+        return 1
+    fi
+    # don't display branch if it's configured as hidden
+    if _is_hidden; then
+        return 1
+    fi
+    # display branch if it's not a default...
+    if ! config::is_default_branch "${BRANCH}"; then
+        return 0
+    fi
+    # ...or, if it is, it's master, -d|--default was used, or it's the current worktree,
+    if [[ "${BRANCH}" != "master" && -z "${SHOW_DEFAULTS}" ]] && ! _is_current_worktree; then
+        return 1
+    fi
 }
 
 function _is_remote() {
@@ -188,22 +182,24 @@ function _is_remote() {
 
 function _handle_remote_branch() {
     local display="${BRANCH}"
+    local prefix=" "
+    local output=""
 
     # remote branches are never "checked out" in the worktree sense
-    if [[ -n "${NO_INDICATOR}" ]]; then
-        OUTPUT+=("${display}")
-    else
-        OUTPUT+=("  ${display}")
-    fi
+    [[ -n "${NO_INDICATOR}" ]] && prefix=""
+    output="${prefix}${display}$(_sync_indicator)"
+
+    OTHERS+=("${output}")
+    OTHER_VALUES+=("${BRANCH}")
 }
 
 function _get_indicator() {
-    local indicator="${INDICATOR_BY_WORKTREE[${WORKTREE}]:-}"
+    local indicator=""
 
     if [[ -n "${NO_INDICATOR}" ]] || [[ -n "${RAW}" ]]; then
         indicator=""
-    elif [[ -n "${indicator}" ]]; then
-        indicator="${indicator} "
+    elif [[ -n "${WORKTREE}" ]] && config::has_indicator "${WORKTREE}"; then
+        indicator="$(config::indicator_for "${WORKTREE}") "
     else
         indicator="  "
     fi
@@ -211,32 +207,75 @@ function _get_indicator() {
     echo "${indicator}"
 }
 
+function _worktree_suffix() {
+    [[ -n "${VERBOSE}" && -n "${WORKTREE}" ]] || return 0
+    echo " [${WORKTREE}]"
+}
+
+function _sync_indicator() {
+    [[ -n "${VERBOSE}" ]] || return 0
+
+    if git::is_ancestor "master" "${BRANCH}"; then
+        echo " ✓"
+    else
+        echo " ⨯"
+    fi
+}
+
+function _clean_indicator() {
+    [[ -n "${VERBOSE}" ]] || return 0
+
+    # clean/dirty is a property of a working tree, so only branches checked out
+    # in a worktree have one; others (i.e.: remotes) get no indicator
+    local path
+    path="$(worktrees::path_for "${BRANCH}")"
+
+    [[ -n "${path}" ]] || return 0
+
+    if ! git::is_clean -u "${path}"; then
+        echo " ●"
+    fi
+}
+
 function _handle_local_branch() {
     if [[ -n "${RAW}" ]]; then
-        OUTPUT+=("${BRANCH}")
+        OTHERS+=("${BRANCH}")
+        OTHER_VALUES+=("${BRANCH}")
         return 0
     fi
 
-    local indicator
-    local branch="${BRANCH}"
-    local color="${COLOR_BY_WORKTREE["${WORKTREE}"]:-}"
+    local output="${BRANCH}"
 
-    indicator="$(_get_indicator)"
-    [[ -n "${color}" ]] && branch="$(color::ize "${color}" "${branch}")"
+    output="$(view::style_branch "${BRANCH}" "${WORKTREE}")"
+    output="$(_get_indicator)${output}$(_worktree_suffix)$(_sync_indicator)"
 
-    OUTPUT+=("${indicator}${branch}")
+    if config::is_default_branch "${BRANCH}"; then
+        DEFAULTS+=("${output}")
+        DEFAULT_VALUES+=("${BRANCH}")
+    else
+        OTHERS+=("${output}")
+        OTHER_VALUES+=("${BRANCH}")
+    fi
 }
 
-function _build_output() {
+function _consolidate_outputs() {
+    OUTPUT+=("${DEFAULTS[@]}")
+    VALUES+=("${DEFAULT_VALUES[@]}")
+
+    OUTPUT+=("${OTHERS[@]}")
+    VALUES+=("${OTHER_VALUES[@]}")
+}
+
+function _build_outputs() {
     for ref_prefix in "${REFS[@]}"; do
         while IFS= read -r branch; do
             BRANCH="${branch}"
-            WORKTREE="${WORKTREE_BY_BRANCH[${BRANCH}]:-" "}"
+            WORKTREE="$(worktrees::name_for "${BRANCH}")"
 
             ! _should_display_branch && continue
 
             if _is_remote "${ref_prefix}" ; then
-                _handle_remote_branch 
+                _handle_remote_branch
             else
                 _handle_local_branch
             fi
@@ -244,11 +283,27 @@ function _build_output() {
     done
 }
 
+function _display_for_fzf() {
+    local lines=()
+    local i
+    for i in "${!OUTPUT[@]}"; do
+        # <display>\t<plain-branch>: fzf shows only the first (display)
+        # column but returns the whole line, so we recover the branch
+        # name verbatim regardless of indicator, color codes, or suffix
+        lines+=("${OUTPUT[i]}"$'\t'"${VALUES[i]}")
+    done
+
+    printf '%s\n' "${lines[@]}" \
+        | fzf --ansi --tac --delimiter=$'\t' --with-nth=1 \
+        | cut -f2-
+}
+
 function _main::display_branches() {
-    _build_output
+    _build_outputs
+    _consolidate_outputs
 
     if [[ "${FZF}" = "true" ]]; then
-        printf '%s\n' "${OUTPUT[@]}" | fzf --ansi --tac | awk '{print $NF}'
+        _display_for_fzf
     else
         printf '%s\n' "${OUTPUT[@]}"
     fi
@@ -256,7 +311,6 @@ function _main::display_branches() {
 
 ## main
 
-_setup::build_worktree_by_branch
 _setup::assign_indicators
 _main::display_branches
 

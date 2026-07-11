@@ -75,6 +75,15 @@ function sys::username() {
     fi
 }
 
+#######################################
+# Generates a random uuid.
+# Outputs:
+#   Writes to stdout a random uuid
+#######################################
+function sys::uuid() {
+    uuidgen | tr '[:upper:]' '[:lower:]'
+}
+
 ## pkg versions ################################################################
 
 #######################################

@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+
+source "${BASH_LIB}/args/validate.sh"
+
+
+__GIT_CONFIG_FILE="${XDG_CONFIG_HOME}/git/config.toml"
+__GIT_REPO_NAME=""
+
+declare -A __GIT_INDICATOR_BY_WORKTREE         # worktree name -> indicator
+declare -A __GIT_COLOR_BY_WORKTREE             # worktree name -> color code
+declare -A __GIT_DEFAULT_BY_WORKTREE           # worktree name -> default branch name
+declare -A __GIT_DEFAULT_BRANCHES              # set of configured default branch names
+declare -A __GIT_SYNC_EXCLUDED_WORKTREES       # set of worktree names excluded from sync
+declare -A __GIT_HIDDEN_WORKTREES              # set of worktree names hidden from checkout
+
+__GIT_CONFIG_LOADED=""
+
+
+function __config::init() {
+    [[ -n "${__GIT_CONFIG_LOADED}" ]] && return 0
+    __GIT_REPO_NAME="$(git::repo_name)"
+    __GIT_CONFIG_LOADED="true"
+
+    [[ -f "${__GIT_CONFIG_FILE}" ]] || return 0
+
+    local selector=".\"${__GIT_REPO_NAME}\" // {}"
+    selector+=' | to_entries | .[] | .key as $section'
+    selector+=' | .value | to_entries | .[]'
+    selector+=' | [$section, .key, (.value | tostring)] | @tsv'
+
+    while IFS=$'\t' read -r section key value; do
+        case "${section}" in
+            indicator) __GIT_INDICATOR_BY_WORKTREE["${key}"]="${value}" ;;
+            color)     __GIT_COLOR_BY_WORKTREE["${key}"]="${value}" ;;
+            default)
+                __GIT_DEFAULT_BY_WORKTREE["${key}"]="${value}"
+                __GIT_DEFAULT_BRANCHES["${value}"]="true"
+                ;;
+        esac
+    done < <(yq -p toml -r "${selector}" "${__GIT_CONFIG_FILE}" 2>/dev/null)
+
+    local exclude_selector=".\"${__GIT_REPO_NAME}\".sync.exclude // [] | .[]"
+    while IFS= read -r worktree; do
+        [[ -z "${worktree}" ]] && continue
+        __GIT_SYNC_EXCLUDED_WORKTREES["${worktree}"]="true"
+    done < <(yq -p toml -r "${exclude_selector}" "${__GIT_CONFIG_FILE}" 2>/dev/null)
+
+    local hide_selector=".\"${__GIT_REPO_NAME}\".hide // [] | .[]"
+    while IFS= read -r worktree; do
+        [[ -z "${worktree}" ]] && continue
+        __GIT_HIDDEN_WORKTREES["${worktree}"]="true"
+    done < <(yq -p toml -r "${hide_selector}" "${__GIT_CONFIG_FILE}" 2>/dev/null)
+}
+
+function config::file() {
+    echo "${__GIT_CONFIG_FILE}"
+}
+
+function config::repo_name() {
+    __config::init
+    echo "${__GIT_REPO_NAME}"
+}
+
+function config::indicator_for() {
+    __config::init
+    echo "${__GIT_INDICATOR_BY_WORKTREE[${1}]:-}"
+}
+
+function config::has_indicator() {
+    __config::init
+    [[ -n "${__GIT_INDICATOR_BY_WORKTREE[${1}]+x}" ]]
+}
+
+function config::set_indicator() {
+    __config::init
+    __GIT_INDICATOR_BY_WORKTREE["${1}"]="${2}"
+}
+
+function config::is_indicator_used() {
+    __config::init
+    local target="${1}"
+
+    for ind in "${__GIT_INDICATOR_BY_WORKTREE[@]}"; do
+        [[ "${ind}" = "${target}" ]] && return 0
+    done
+
+    return 1
+}
+
+function config::color_for() {
+    __config::init
+    echo "${__GIT_COLOR_BY_WORKTREE[${1}]:-}"
+}
+
+function config::default_for() {
+    __config::init
+
+    local value="${__GIT_DEFAULT_BY_WORKTREE[${1}]:-}"
+    [[ -z "${value}" ]] && return 1
+
+    echo "${value}"
+}
+
+function config::is_default_branch() {
+    __config::init
+    [[ -n "${__GIT_DEFAULT_BRANCHES[${1}]+x}" ]]
+}
+
+function config::is_sync_excluded_worktree() {
+    __config::init
+    [[ -n "${__GIT_SYNC_EXCLUDED_WORKTREES[${1}]+x}" ]]
+}
+
+function config::is_hidden_worktree() {
+    __config::init
+    [[ -n "${__GIT_HIDDEN_WORKTREES[${1}]+x}" ]]
+}
