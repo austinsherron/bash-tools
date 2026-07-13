@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/data/store.sh"
+source "${BASH_LIB}/log/utils.sh"
+
+
+# CLI wrapper around lib/src/data/store.sh: a generic, insertion-ordered, deduped
+# store. Resolves a store *name* to a file under STORE_ROOT and dispatches to the
+# matching store:: function. The store is use-case agnostic — entries are opaque,
+# newline-free strings.
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="store"
+
+declare -A CMDS=(
+    [push]="  append a value if not already present (idempotent)"
+    [list]="  print all entries, oldest first"
+    [count]=" print the number of entries"
+    [peek]="  print an entry without removing it (--oldest|--newest)"
+    [pop]="   print and remove an entry (--oldest|--newest)"
+    [remove]="remove the entry matching a value"
+    [has]="   exit 0 if the store contains a value, 1 otherwise"
+    [clear]=" remove all entries"
+    [stores]="list the names of all stores under STORE_ROOT (takes no name)"
+)
+
+STORE_ROOT="${STORE_ROOT:-${XDG_STATE_HOME:-${HOME}/.local/state}/stores}"
+
+function cmd_descriptions() {
+    # shellcheck disable=SC2207
+    IFS=$'\n' sorted_cmds=($(sort <<< "${!CMDS[*]}")) ; unset IFS
+
+    for cmd in "${sorted_cmds[@]}"; do
+        echo "    ${cmd}       ${CMDS[${cmd}]}"
+    done
+}
+
+USAGE="store <cmd> <name> [args] {flags}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    A generic, insertion-ordered, deduped-by-value store backed by a file.
+
+    Each store is identified by a name and lives at:
+        \${STORE_ROOT:-\${XDG_STATE_HOME:-\$HOME/.local/state}/stores}/<name>
+
+    Entries are opaque, newline-free strings. "Oldest" is the first-inserted
+    entry; "newest" is the last-inserted. Mutations are serialized w/ a lock so
+    concurrent writers are safe.
+
+CMDS
+
+$(cmd_descriptions)
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    CMD             the store command to run (see CMDS)
+    NAME            the name of the store to operate on
+    ARGS            command-specific: a value (push/remove/has) or
+                    --oldest|--newest (peek/pop)
+
+FLAGS
+
+    -h, --help      display this message
+
+GLOBALS
+
+    STORE_ROOT      the directory under which stores are kept
+help
+}
+
+
+function __store_path() {
+    echo "${STORE_ROOT}/${1}"
+}
+
+## main ########################################################################
+
+LogFlags::process_log_flags "$@"
+
+FIRST="${1:-}"
+
+if [[ -z "${FIRST}" ]] || [[ "${FIRST}" == "-h" ]] || [[ "${FIRST}" == "--help" ]]; then
+    help && exit 0
+fi
+
+if ! check::one_of "${FIRST}" "${!CMDS[@]}"; then
+    ulogger error "unrecognized command: ${FIRST}"
+    usage >&2
+    exit 1
+fi
+
+CMD="${FIRST}" ; shift
+
+# "stores" operates on the root, not a named store
+if [[ "${CMD}" == "stores" ]]; then
+    store::stores "${STORE_ROOT}"
+    exit 0
+fi
+
+NAME="${1:-}"
+
+validate_required_positional "store name" "${NAME}" || exit 1
+shift
+
+# commands that require a value argument
+if check::one_of "${CMD}" push remove has; then
+    validate_required_positional "value" "${1:-}" || exit 1
+fi
+
+FILE="$(__store_path "${NAME}")"
+"store::${CMD}" "${FILE}" "$@"

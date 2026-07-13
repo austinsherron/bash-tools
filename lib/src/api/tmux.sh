@@ -151,3 +151,80 @@ function tmux::location() {
         tmux display-message -p "${fmt}"
     fi
 }
+
+#######################################
+# Displays a pane's unique, stable id (e.g.: "%12"). Unlike session:window.pane,
+# a pane id survives window renumbering and moves.
+# Arguments:
+#   target: optional, defaults to the calling pane (${TMUX_PANE}); the pane to resolve
+# Outputs:
+#   Writes the pane id to stdout
+#######################################
+function tmux::pane_id() {
+    local -r target="${1:-${TMUX_PANE}}"
+    tmux display-message -pt "${target}" '#{pane_id}'
+}
+
+#######################################
+# Checks whether a pane still exists.
+# Arguments:
+#   pane_id: the pane id to check (e.g.: "%12")
+# Returns:
+#   0 if the pane exists, 1 otherwise
+#######################################
+function tmux::pane_alive() {
+    local -r pane_id="${1}"
+    # display-message -t doesn't reliably fail for a missing pane, so check
+    # membership in the global pane list instead
+    tmux list-panes -a -F '#{pane_id}' 2> /dev/null | grep -qxF -e "${pane_id}"
+}
+
+#######################################
+# Checks whether a pane is visible, i.e.: session is attached + window/pane are active.
+# Arguments:
+#   pane_id: the pane id to check (e.g.: "%12")
+# Returns:
+#   0 if the pane is visible, 1 otherwise
+#######################################
+function tmux::pane_visible() {
+    local -r pane_id="${1}"
+    local attached wactive pactive
+
+    read -r attached wactive pactive < <(
+        tmux display-message -pt "${pane_id}" \
+            '#{session_attached} #{window_active} #{pane_active}' 2> /dev/null
+    ) || return 1
+
+    [[ "${attached:-0}" -gt 0 ]] && [[ "${wactive}" == "1" ]] && [[ "${pactive}" == "1" ]]
+}
+
+#######################################
+# Displays the name of the window containing a pane.
+# Arguments:
+#   pane_id: the pane id whose window name to resolve (e.g.: "%12")
+# Outputs:
+#   Writes the window name to stdout
+#######################################
+function tmux::pane_window_name() {
+    local -r pane_id="${1}"
+    tmux display-message -pt "${pane_id}" '#{window_name}'
+}
+
+#######################################
+# Focuses a pane by id, switching the client's session/window as needed. Works
+# across sessions.
+# Arguments:
+#   pane_id: the pane id to focus (e.g.: "%12")
+# Returns:
+#   0 on success, 1 if the pane can't be resolved
+#######################################
+function tmux::focus_pane() {
+    local -r pane_id="${1}"
+    local target
+
+    target="$(tmux display-message -pt "${pane_id}" '#{session_name}:#{window_index}')" || return 1
+
+    tmux switch-client -t "${target}" || return 1
+    tmux select-window -t "${target}" 2> /dev/null || true
+    tmux select-pane -t "${pane_id}"
+}

@@ -1,0 +1,240 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/api/tmux.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/core/str.sh"
+source "${BASH_LIB}/log/utils.sh"
+
+
+# A generic tmux <-> store bridge (see: store). Entries are tmux pane ids
+# ("#{pane_id}", e.g.: "%12"), which are stable across window renumbering and
+# moves.
+#
+# All sub-commands operate on a store selected w/ -s|--store, defaulting to a
+# store named "store" under "${XDG_STATE_HOME}/tmux" — i.e.:
+#   ${XDG_STATE_HOME:-$HOME/.local/state}/tmux/store
+# The store name resolves to a path via the "store" CLI, so overriding STORE_ROOT
+# is honored automatically.
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="tmux"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="store"
+
+# resolve the store's name relative to the tmux state dir, so the default store
+# lives at "${XDG_STATE_HOME}/tmux/store" (see: store, which prepends STORE_ROOT)
+export STORE_ROOT="${XDG_STATE_HOME:-${HOME}/.local/state}/tmux"
+DEFAULT_STORE="store"
+
+declare -A CMDS=(
+    [add-pane]="   add a pane id to the store, unless it's visible to an attached client"
+    [remove-pane]="remove a pane id from the store (no-op if absent)"
+    [status]="     render a status-bar segment for the store, pruning dead panes"
+    [goto]="       pop the oldest|newest pane from the store and focus it"
+)
+
+GLYPH="🤖"
+
+## sub-commands ################################################################
+
+# add-pane [pane] [-s store]
+#
+# Adds a pane id to the store, defaulting to the calling pane. Skips the add when
+# the pane is already on-screen for an attached client — no point flagging a pane
+# the user is looking at.
+function cmd::add_pane() {
+    local store="${DEFAULT_STORE}" 
+    local pane=""
+
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        -s|--store) [[ -n "${2:-}" ]] && store="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+        -v*|-q*) shift ;;
+        *) pane="${1}" ; shift ;;
+      esac
+    done
+
+    [[ -z "${pane}" ]] && pane="$(tmux::pane_id)"
+
+    if tmux::pane_visible "${pane}"; then
+        ulogger debug "pane ${pane} is visible; not adding to store ${store}"
+        return 0
+    fi
+
+    store push "${store}" "${pane}"
+    ulogger info "added pane ${pane} to store ${store}"
+    tmux refresh-client -S 2> /dev/null || true
+}
+
+# remove-pane [pane] [-s store]
+#
+# Removes a pane id from the store, defaulting to the calling pane. Cheap and
+# quiet so it can run from a pane-focus-in hook on every pane switch (set
+# ULOGGER_DISABLED=true in the hook to silence it entirely).
+function cmd::remove_pane() {
+    local store="${DEFAULT_STORE}" 
+    local pane=""
+
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        -s|--store) [[ -n "${2:-}" ]] && store="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+        -v*|-q*) shift ;;
+        *) pane="${1}" ; shift ;;
+      esac
+    done
+
+    [[ -z "${pane}" ]] && pane="$(tmux::pane_id)"
+    store remove "${store}" "${pane}"
+    tmux refresh-client -S 2> /dev/null || true
+}
+
+# status [-g glyph] [-s store]
+#
+# Prints "<glyph> <count> [win1, win2, ...]" when the store is non-empty, nothing
+# otherwise. Dead panes are pruned from the store as a side effect. Meant to be
+# embedded in the tmux status bar via #(tmux-store status).
+function cmd::status() {
+    local store="${DEFAULT_STORE}"
+
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        -g|--glyph) [[ -n "${2:-}" ]] && GLYPH="${2:-}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+        -s|--store) [[ -n "${2:-}" ]] && store="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+        -v*|-q*) shift ;;
+        *) shift ;;
+      esac
+    done
+
+    local pane
+    local -a panes names=()
+    mapfile -t panes < <(store list "${store}")
+
+    for pane in "${panes[@]}"; do
+        [[ -z "${pane}" ]] && continue
+
+        if tmux::pane_alive "${pane}"; then
+            names+=("$(tmux::pane_window_name "${pane}")")
+        else
+            # prune panes that no longer exist
+            store remove "${store}" "${pane}" || true
+        fi
+    done
+
+    [[ "${#names[@]}" -eq 0 ]] && return 0
+    echo "${GLYPH} ${#names[@]} [$(str::join ", " "${names[@]}")]"
+}
+
+# goto [oldest|newest] [-s store]
+#
+# Pops a pane id from the store and focuses it, removing it from the store.
+# Defaults to the oldest (first to need attention). Skips (and drops) dead panes
+# until a live one is found or the store is exhausted.
+function cmd::goto() {
+    local store="${DEFAULT_STORE}" which="oldest"
+    local pane
+
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        -s|--store) [[ -n "${2:-}" ]] && store="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+        -v*|-q*) shift ;;
+        *) which="${1}" ; shift ;;
+      esac
+    done
+
+    validate_one_of "which" "${which}" oldest newest || return 1
+
+    while true; do
+        if ! pane="$(store pop "${store}" "--${which}")"; then 
+            ulogger debug "store ${store} is empty"
+            return 0
+        fi
+
+        [[ -z "${pane}" ]] && return 0
+
+        if tmux::pane_alive "${pane}"; then
+            ulogger info "focusing pane ${pane} from store ${store}"
+            tmux::focus_pane "${pane}"
+            break
+        fi
+
+        ulogger debug "skipping dead pane ${pane} from store ${store}"
+    done
+
+    tmux refresh-client -S 2> /dev/null || true
+}
+
+## usage #######################################################################
+
+function cmd_descriptions() {
+    # shellcheck disable=SC2207
+    IFS=$'\n' sorted_cmds=($(sort <<< "${!CMDS[*]}")) ; unset IFS
+
+    for cmd in "${sorted_cmds[@]}"; do
+        echo "    ${cmd}       ${CMDS[${cmd}]}"
+    done
+}
+
+USAGE="tmux-store <cmd> [args] {flags}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    A generic tmux <-> store bridge. Each sub-command operates on an ordered
+    store (see: store) whose entries are tmux pane ids.
+
+    The store defaults to "${XDG_STATE_HOME:-\$HOME/.local/state}/tmux/store" and
+    can be selected w/ -s|--store.
+
+CMDS
+
+$(cmd_descriptions)
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    CMD             the sub-command to run (see CMDS)
+    ARGS            command-specific: a pane id (add-pane/remove-pane) or
+                    oldest|newest (goto)
+
+OPTIONS
+
+    -s, --store     optional, defaults to "${DEFAULT_STORE}"; the store name
+    -g, --glyph     optional (status only), defaults to "${GLYPH}"; leading glyph
+
+FLAGS
+
+    -h, --help      display this message
+help
+}
+
+## main ########################################################################
+
+LogFlags::process_log_flags "$@"
+
+FIRST="${1:-}"
+
+if [[ -z "${FIRST}" ]] || [[ "${FIRST}" == "-h" ]] || [[ "${FIRST}" == "--help" ]]; then
+    help && exit 0
+fi
+
+if ! check::one_of "${FIRST}" "${!CMDS[@]}"; then
+    ulogger error "unrecognized command: ${FIRST}"
+    usage >&2
+    exit 1
+fi
+
+CMD="${FIRST}" ; shift
+
+# every sub-command is a no-op outside tmux
+tmux::is || exit 0
+
+"cmd::${CMD//-/_}" "$@"
