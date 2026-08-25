@@ -26,7 +26,7 @@ NAME
 SYNOPSIS
 
     git sync [-b|--branch <branch>]... [-d|--defaults] [-s|--source <source>]
-             [-c|--check] [-m|--mode ff|merge|rebase] [--force] [--strict]
+             [-c|--check] [-m|--mode ff|m[erge]|r[ebase]] [--force] [--strict]
     git sync -h|--help
 
 DESCRIPTION
@@ -80,7 +80,7 @@ FLAGS
     -c, --check             do not sync; write to stdout the branches that
                             would be updated by the sync. Exits 0 if none would
                             be updated, 1 otherwise
-        --force             sync branches with uncommitted changes by stashing
+    -f, --force             sync branches with uncommitted changes by stashing
                             them (incl. untracked files) before syncing and
                             re-applying the stash afterward
         --strict            exit with rc=1 on the first failure
@@ -159,6 +159,11 @@ function _validate_branches_exist() {
 }
 
 function _normalize_mode() {
+    # If mode wasn't explicitly set, use "merge" if -c|--check was used, "ff" otherwise
+    if [[ -z "${MODE}" ]]; then
+        [[ -n "${CHECK}" ]] && MODE="merge" || MODE="ff"
+    fi
+
     case "${MODE}" in
         ff|fast-forward) MODE="fast-forward" ;;
         m|merge)         MODE="merge" ;;
@@ -227,9 +232,10 @@ function _is_target() {
         return 1
     fi
 
-    [[ "${MODE}" != "fast-forward" ]] && return 0
+    if [[ "${MODE}" != "fast-forward" ]] || _can_fast_forward "${branch}"; then
+        return 0
+    fi
 
-    _can_fast_forward "${branch}" && return 0
     ulogger info "excluding '${branch}': cannot be fast-forward merged w/ '${SOURCE}'"
     return 1
 }

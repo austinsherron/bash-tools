@@ -92,10 +92,9 @@ OTHER_VALUES=()
 while [[ $# -gt 0 ]]; do
   case $1 in
     -a|--all)
-      REFS+=("refs/remotes/")
-      SHOW_DEFAULTS="true" ; shift ;;
+      SHOW_DEFAULTS="true" SHOW_HIDDEN="true" ; shift ;;
     -d|--default)
-      SHOW_DEFAULTS="true" ; shift ;;
+      SHOW_DEFAULTS="true"; shift ;;
     -f|--fzf)
       FZF="true" ; shift ;;
     --remotes)

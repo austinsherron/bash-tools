@@ -156,13 +156,21 @@ function tmux::location() {
 # Displays a pane's unique, stable id (e.g.: "%12"). Unlike session:window.pane,
 # a pane id survives window renumbering and moves.
 # Arguments:
-#   target: optional, defaults to the calling pane (${TMUX_PANE}); the pane to resolve
+#   target: optional, defaults to the calling pane (${TMUX_PANE}), or, absent
+#           that, the active pane; the pane to resolve
 # Outputs:
 #   Writes the pane id to stdout
 #######################################
 function tmux::pane_id() {
-    local -r target="${1:-${TMUX_PANE}}"
-    tmux display-message -pt "${target}" '#{pane_id}'
+    # TMUX_PANE is only exported to shells started *in* a pane, so it's absent
+    # under "run-shell"/hooks; fall back to the active pane there
+    local -r target="${1:-${TMUX_PANE:-}}"
+
+    if [[ -z "${target}" ]]; then
+        tmux display-message -p '#{pane_id}'
+    else
+        tmux display-message -pt "${target}" '#{pane_id}'
+    fi
 }
 
 #######################################

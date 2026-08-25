@@ -195,18 +195,15 @@ function store::stores() {
     ) 2> /dev/null | sed 's|^\./||' | sort
 }
 
-function _peek() {
-    local file="${1}"
-    local which="${2}"
-    local value
+function __store::peek_impl() {
+    local -r file="${1}"
+    local -r which="${2}"
 
     if [[ "${which}" == "newest" ]]; then
-        value="$(tail -n 1 "${file}")"
+        tail -n 1 "${file}"
     else
-        value="$(head -n 1 "${file}")"
+        head -n 1 "${file}"
     fi
-
-    echo "${value}"
 }
 
 #######################################
@@ -235,7 +232,9 @@ function store::peek() {
     done
 
     [[ -f "${file}" ]] || return 1
-    _peek "${file}" "${which}"
+
+    local value
+    value="$(__store::peek_impl "${file}" "${which}")"
     [[ -z "${value}" ]] && return 1
 
     printf '%s\n' "${value}"
