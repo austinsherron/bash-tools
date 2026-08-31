@@ -8,24 +8,21 @@ source "${BASH_LIB}/args/validate.sh"
 source "${BASH_LIB}/core/str.sh"
 source "${BASH_LIB}/log/utils.sh"
 
+source "${BASH_TOOLS}/tools/tmux/_helpers/stack.sh"
 
-# A generic tmux <-> store bridge (see: store). Entries are tmux pane ids
-# ("#{pane_id}", e.g.: "%12"), which are stable across window renumbering and
-# moves.
-#
-# All sub-commands operate on a store selected w/ -s|--store, defaulting to a
-# store named "store" under "${XDG_STATE_HOME}/tmux" — i.e.:
-#   ${XDG_STATE_HOME:-$HOME/.local/state}/tmux/store
-# The store name resolves to a path via the "store" CLI, so overriding STORE_ROOT
-# is honored automatically.
 
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="tmux"
 [[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="store"
 
+## constants ###################################################################
+
 # resolve the store's name relative to the tmux state dir, so the default store
 # lives at "${XDG_STATE_HOME}/tmux/store" (see: store, which prepends STORE_ROOT)
-export STORE_ROOT="${XDG_STATE_HOME:-${HOME}/.local/state}/tmux"
+export STORE_ROOT="${STORE_ROOT:-${XDG_STATE_HOME:-${HOME}/.local/state}/tmux}"
 DEFAULT_STORE="store"
+GLYPH="🤖"
+
+## usage #######################################################################
 
 declare -A CMDS=(
     [add-pane]="   add a pane id to the store, unless it's visible to an attached client"
@@ -34,7 +31,56 @@ declare -A CMDS=(
     [goto]="       pop the oldest|newest pane from the store and focus it"
 )
 
-GLYPH="🤖"
+function cmd_descriptions() {
+    # shellcheck disable=SC2207
+    IFS=$'\n' sorted_cmds=($(sort <<< "${!CMDS[*]}")) ; unset IFS
+
+    for cmd in "${sorted_cmds[@]}"; do
+        echo "    ${cmd}       ${CMDS[${cmd}]}"
+    done
+}
+
+USAGE="tmux-store <cmd> [args] {flags}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    A generic tmux <-> store bridge. Each sub-command operates on an ordered
+    store (see: store) whose entries are tmux pane ids.
+
+    The store defaults to "${XDG_STATE_HOME:-\$HOME/.local/state}/tmux/store" and
+    can be selected w/ -s|--store.
+
+CMDS
+
+$(cmd_descriptions)
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    CMD             the sub-command to run (see CMDS)
+    ARGS            command-specific: a pane id (add-pane/remove-pane) or
+                    oldest|newest (goto)
+
+OPTIONS
+
+    -s, --store     optional, defaults to "${DEFAULT_STORE}"; the store name
+    -g, --glyph     optional (status only), defaults to "${GLYPH}"; leading glyph
+
+FLAGS
+
+    -h, --help      display this message
+help
+}
+
 
 ## sub-commands ################################################################
 
@@ -154,7 +200,9 @@ function cmd::goto() {
 
         if tmux::pane_alive "${pane}"; then
             ulogger info "focusing pane ${pane} from store ${store}"
-            tmux::focus_pane "${pane}"
+            # a hidden stack pane has to be focused first, or focusing it strands the
+            # client in an internal session (see: tmux-stack)
+            __stack::focus "${pane}"
             break
         fi
 
@@ -162,58 +210,6 @@ function cmd::goto() {
     done
 
     tmux refresh-client -S 2> /dev/null || true
-}
-
-## usage #######################################################################
-
-function cmd_descriptions() {
-    # shellcheck disable=SC2207
-    IFS=$'\n' sorted_cmds=($(sort <<< "${!CMDS[*]}")) ; unset IFS
-
-    for cmd in "${sorted_cmds[@]}"; do
-        echo "    ${cmd}       ${CMDS[${cmd}]}"
-    done
-}
-
-USAGE="tmux-store <cmd> [args] {flags}"
-
-usage() {
-    echo "usage: ${USAGE}"
-}
-
-help() {
-cat <<help
-DESCRIPTION
-
-    A generic tmux <-> store bridge. Each sub-command operates on an ordered
-    store (see: store) whose entries are tmux pane ids.
-
-    The store defaults to "${XDG_STATE_HOME:-\$HOME/.local/state}/tmux/store" and
-    can be selected w/ -s|--store.
-
-CMDS
-
-$(cmd_descriptions)
-
-USAGE
-
-    ${USAGE}
-
-POSITIONAL ARGUMENTS
-
-    CMD             the sub-command to run (see CMDS)
-    ARGS            command-specific: a pane id (add-pane/remove-pane) or
-                    oldest|newest (goto)
-
-OPTIONS
-
-    -s, --store     optional, defaults to "${DEFAULT_STORE}"; the store name
-    -g, --glyph     optional (status only), defaults to "${GLYPH}"; leading glyph
-
-FLAGS
-
-    -h, --help      display this message
-help
 }
 
 ## main ########################################################################

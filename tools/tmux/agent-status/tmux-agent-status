@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/api/tmux.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/log/utils.sh"
+
+source "${BASH_TOOLS}/tools/tmux/_helpers/stack.sh"
+source "${BASH_TOOLS}/tools/tmux/agent-status/cmd/_constants.sh"
+
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="tmux"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="agent-status"
+
+declare -A CMDS=(
+    [init]="  ready the stores for the running tmux server, dropping stale state"
+    [set]="   flag a pane w/ a state (error|input|done), clearing its other states"
+    [clear]=" unflag a pane, whatever state it's in (no-op if unflagged)"
+    [paint]=" recolor every window from the stores, pruning dead panes"
+    [list]="  print every flagged pane as \"<state> <pane> <window>\""
+    [goto]="  focus a flagged pane, loudest state first, and unflag it"
+    [status]="render a status-bar segment counting other sessions' flagged panes"
+)
+
+function _load_cmds() {
+    for cmd_file in "${BASH_TOOLS}"/tools/tmux/agent-status/cmd/*.sh; do
+        # shellcheck source=/dev/null
+        source "${cmd_file}"
+    done
+}
+
+function cmd_descriptions() {
+    # shellcheck disable=SC2207
+    IFS=$'\n' sorted_cmds=($(sort <<< "${!CMDS[*]}")) ; unset IFS
+
+    for cmd in "${sorted_cmds[@]}"; do
+        echo "    ${cmd}       ${CMDS[${cmd}]}"
+    done
+}
+
+USAGE="tmux-agent-status <cmd> [args] {flags}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Flags the state of an agent running in a tmux pane by coloring the window
+    indicator of the window that pane belongs to.
+
+    A flagged pane's window wears a state-colored background until the pane is
+    focused, at which point it reverts. A window holding several flagged panes is
+    colored by the loudest of them, in the order:
+
+        error > input > done
+
+    The color of each state is a "#[...]" style read from the tmux option
+    "${STYLE_OPT_PREFIX}<state>", falling back to a srcery shade. Painting writes
+    it to three window-local options the status formats interpolate (see:
+    init-agent-status.sh):
+
+        ${WINDOW_OPT}        the entry's body, i.e.: the style verbatim
+        ${EDGE_IN_OPT}       the separator glyph leading into the entry
+        ${EDGE_OUT_OPT}      the separator glyph trailing out of it
+
+    The edges are derived from the style's "bg", so a theme that shapes its
+    window entries out of separator glyphs has the whole shape colored rather
+    than just the text between them.
+
+    "status" renders the other half of the picture: a status-bar segment naming
+    every *other* session that holds flagged panes, w/ a count and the color of
+    its loudest one. A session's own windows already carry their state, so it is
+    left out of its own segment.
+
+    State is kept per pane, in one store per state (see: store), under
+    "\${STORE_ROOT}/${STORE_PREFIX}<state>". Those stores outlive the tmux server
+    that filled them, and pane ids are only unique w/in a server, so "init" has to
+    run once per server before any of the rest.
+
+CMDS
+
+$(cmd_descriptions)
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    CMD             the sub-command to run (see CMDS)
+    ARGS            command-specific: a state and/or a pane id (set), a pane id
+                    (clear), oldest|newest (goto) or the viewing session (status)
+
+FLAGS
+
+    -h, --help      display this message
+
+GLOBALS
+
+    STORE_ROOT      the directory under which the state stores are kept
+help
+}
+
+
+## main
+
+_load_cmds
+
+LogFlags::process_log_flags "$@"
+
+FIRST="${1:-}"
+
+if [[ -z "${FIRST}" ]] || [[ "${FIRST}" == "-h" ]] || [[ "${FIRST}" == "--help" ]]; then
+    help && exit 0
+fi
+
+if ! check::one_of "${FIRST}" "${!CMDS[@]}"; then
+    ulogger error "unrecognized command: ${FIRST}"
+    usage >&2
+    exit 1
+fi
+
+CMD="${FIRST}" ; shift
+
+# every sub-command is a no-op outside tmux
+tmux::is -e
+
+"cmd::${CMD}" "$@"

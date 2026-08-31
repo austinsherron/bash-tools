@@ -8,12 +8,27 @@ source "${BASH_LIB}/core/str.sh"
 validate_installed tmux.sh tmux
 
 #######################################
-# Displays the current tmux window's name.
+# Checks if the caller is in tmux.
+# Arguments:
+#   -e: exit if not in tmux
 # Outputs:
 #   Writes to stdout the current tmux window's name
 #######################################
 function tmux::is() {
-    [[ -n "${TMUX+x}" ]]
+    local exit=""
+
+    local OPTIND=1
+    while getopts "e" opt; do
+      case $opt in
+        e) exit="true" ;;
+        \?) ulogger error "valid flags are -e" >&2 ; return 1 ;;
+      esac
+    done
+
+    [[ -n "${TMUX+x}" ]] && return 0
+    [[ -z "${exit}" ]] && return 1
+
+    exit 0
 }
 
 #######################################
@@ -59,7 +74,9 @@ function tmux::list_windows() {
 #   0 if a tmux window w/ the provided name exists in the provided/active session, 1 otherwise.
 #######################################
 function tmux::is_window() {
-    tmux::list_windows "${2:-}" 2> /dev/null | grep -qF "${1}"
+    # -x: window names derived from work item names share prefixes constantly, so
+    # a substring match is not good enough
+    tmux::list_windows "${2:-}" 2> /dev/null | grep -qxF -- "${1}"
 }
 
 #######################################
@@ -118,7 +135,7 @@ function tmux::base_pane_idx() {
 #   -w: include window name in output
 #   -p: include pane number in output
 #   -d: the separator to use; defaults to "."
-#   -u: display the user's location, instead of the location of the function 
+#   -u: display the user's location, instead of the location of the function
 #       call site
 # Outputs:
 #   

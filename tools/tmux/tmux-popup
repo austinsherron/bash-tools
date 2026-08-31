@@ -6,7 +6,7 @@ source "${BASH_LIB}/args/validate.sh"
 source "${BASH_LIB}/log/utils.sh"
 
 
-USAGE="tmux-popup {cmd} [[-x w] [-y h]]|[-d [ww]x[hh]] [--dir path] {flags}"
+USAGE="tmux-popup [swap|restore] [{cmd}] [[-x w] [-y h]]|[-d [ww]x[hh]] [--dir path] {flags}"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -18,26 +18,120 @@ DESCRIPTION
 
     Creates a tmux popup window that runs the provided command.
 
+    With the "swap" subcommand, sends the current pane into a popup and leaves a
+    fresh shell (in the same directory) in its exact spot, so the window layout
+    looks unchanged. With "restore", brings that pane back to its original slot
+    and removes the placeholder shell. Restore must be run from the placeholder
+    pane (i.e. after closing the popup).
+
 USAGE
 
     ${USAGE}
 
+SUBCOMMANDS
+
+    swap                optional; send the current pane into a popup, leaving a
+                        fresh-shell placeholder in its place
+    restore             optional; run from the placeholder pane to swap the
+                        popup'd pane back into place and remove the placeholder
+
 POSITIONAL ARGUMENTS
 
-    CMD                 multi-valued; the command(s) to run in the popup
+    CMD                 multi-valued; the command(s) to run in the popup (ignored
+                        for the "swap"/"restore" subcommands)
 
 OPTIONS
 
     -x, --width         optional, defaults to 70; the popup width, as a percentage
     -y, --height        optional, defaults to 90; the popup width, as a percentage
     -d, --dim           optional; alternate mechanism for specifying width/height; format="hhxww", i.e.: "50x50"
-    --dir               optional, defaults to cwd; the popup's directory
+    --dir               optional, defaults to cwd; the popup's directory (ignored for "swap"/"restore")
 
 FLAGS
 
-    -e, --exit          if provided, indicates that the popup should exit when the command exits
-    -h, --help          display this message
+    -k, --keep          if provided, indicates that the popup should not exit when the command exits (exit w// <esc>)
+    -h, --help          display this message; only before CMD, since a help flag after it belongs to the command
 help
+}
+
+
+function popup::new() {
+    validate_range "--width" "${W}" ">0" "<=100" || exit 1
+    validate_range "--height" "${H}" ">0" "<=100" || exit 1
+    validate_dir "${DIR}" "--dir" || exit 1
+
+    ulogger info "launching popup w/ dim=${W}%x${H}% in dir=${DIR} w/ cmd=${CMD[*]}, flags=${FLAGS}" -t tmux -p popup
+    tmux popup -w "${W}%" -h "${H}%" "${@}" -d "${DIR}" ${FLAGS} "${CMD[@]}"
+}
+
+
+function popup::swap() {
+    validate_range "--width" "${W}" ">0" "<=100" || exit 1
+    validate_range "--height" "${H}" ">0" "<=100" || exit 1
+
+    local src cwd sess ph
+
+    [[ -n "${TMUX:-}" ]] || { ulogger error "not in tmux" -t tmux -p popup ; exit 1 ; }
+
+    src="$(tmux display-message -p '#{pane_id}')"
+    cwd="$(tmux display-message -p '#{pane_current_path}')"
+    sess="popup-${src#%}"
+
+    if tmux has-session -t "=${sess}" 2>/dev/null; then
+        ulogger error "popup session ${sess} already exists; pane may already be in a popup" -t tmux -p popup
+        exit 1
+    fi
+
+    tmux new-session -d -s "${sess}" -c "${cwd}"
+    ph="$(tmux display-message -p -t "=${sess}:" '#{pane_id}')"
+
+    tmux swap-pane -s "${src}" -t "${ph}"
+
+    # per-pane options travel with the pane across swaps -> stash restore info
+    # on the placeholder that now sits in the original slot.
+    tmux set-option -p -t "${ph}" @popup_src  "${src}"
+    tmux set-option -p -t "${ph}" @popup_sess "${sess}"
+
+    ulogger info "swapped pane ${src} into popup session ${sess} w/ dim=${W}%x${H}%" -t tmux -p popup
+    tmux display-popup -w "${W}%" -h "${H}%" -E "tmux attach-session -t '=${sess}'"
+}
+
+function popup::restore() {
+    local here src sess
+
+    [[ -n "${TMUX:-}" ]] || { ulogger error "not in tmux" -t tmux -p popup ; exit 1 ; }
+
+    here="$(tmux display-message -p '#{pane_id}')"
+    src="$(tmux show-options  -p -v @popup_src  2>/dev/null || true)"
+    sess="$(tmux show-options -p -v @popup_sess 2>/dev/null || true)"
+
+    if [[ -z "${src}" || -z "${sess}" ]]; then
+        ulogger error "current pane (${here}) is not a popup placeholder" -t tmux -p popup
+        exit 1
+    fi
+
+    tmux swap-pane -s "${src}" -t "${here}"
+    tmux kill-session -t "=${sess}"
+    ulogger info "restored pane ${src} into slot ${here}; killed popup session ${sess}" -t tmux -p popup
+}
+
+function _parse_dimensions() {
+    if [[ -n "${DIM}" ]] && [[ "${DIM}" =~ ([0-9]{1,3})x([0-9]{1,3})$ ]]; then
+        W="${BASH_REMATCH[1]}"
+        H="${BASH_REMATCH[2]}"
+    elif [[ -n "${DIM}" ]]; then
+        ulogger error "--dim (${DIR}) must be in the format \"{dd}x{dd}\""
+        exit 1
+    fi
+}
+
+function _exec_cmd() {
+    case "${SUBCMD}" in
+      swap) popup::swap ;;
+      restore) popup::restore ;;
+      new) popup::new "${@}" ;;
+      *) ulogger error "unrecognized command: ${SUBCMD}" ; exit 1 ;;
+    esac
 }
 
 
@@ -45,10 +139,16 @@ W="70"
 H="90"
 DIM=""
 DIR="$(pwd)"
+SUBCMD="new"
 CMD=()
-EXIT=""
+FLAGS="-E"
 
 LogFlags::process_log_flags "$@"
+
+case "${1:-}" in
+  swap|restore)
+    SUBCMD="${1}" ; shift ;;
+esac
 
 while [[ $# -gt 0 ]]; do
   case "${1}" in
@@ -60,8 +160,13 @@ while [[ $# -gt 0 ]]; do
       DIM="${2}" ; shift ; shift ;;
     --dir)
       DIR="${2}" ; shift ; shift ;;
-    -e|--exit)
-      EXIT="-E" ; shift ;;
+    -k|--keep)
+      FLAGS="" ; shift ;;
+    -h|--help)
+      # a help flag is ours only until the command starts; past that it's the
+      # command's
+      if [[ "${#CMD[@]}" -eq 0 ]]; then help ; exit 0 ; fi
+      CMD+=("${1}") ; shift ;;
     -v*|-q*)
       shift ;;
     *)
@@ -70,19 +175,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 
-if [[ -n "${DIM}" ]] && [[ "${DIM}" =~ ([0-9]{1,3})x([0-9]{1,3})$ ]]; then
-    W="${BASH_REMATCH[1]}"
-    H="${BASH_REMATCH[2]}"
-elif [[ -n "${DIM}" ]]; then
-    ulogger error "--dim (${DIR}) must be in the format \"{dd}x{dd}\""
-    exit 1
-fi
+## main
 
-validate_required_array "cmd" "${CMD[@]}" || exit 1
-validate_range "--width" "${W}" ">0" "<=100" || exit 1
-validate_range "--height" "${H}" ">0" "<=100" || exit 1
-validate_dir "${DIR}" "--dir" || exit 1
-
-ulogger info "launching popup w/ dim=${W}%x${H}% in dir=${DIR} w/ cmd=${CMD[*]}, flags=${EXIT}" -t tmux -p popup
-tmux popup -w "${W}%" -h "${H}%" "${@}" -d "${DIR}" $EXIT "${CMD[@]}"
-
+_parse_dimensions 
+_exec_cmd "${@}"

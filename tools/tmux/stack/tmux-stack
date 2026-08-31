@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/api/tmux.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/log/utils.sh"
+
+source "${BASH_TOOLS}/tools/tmux/_helpers/stack.sh"
+
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="tmux"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="stack"
+
+declare -A CMDS=(
+    [new]="    open a fresh shell stacked in the current pane's slot"
+    [next]="   show the next pane in the current slot's stack, wrapping"
+    [prev]="   show the previous pane in the current slot's stack, wrapping"
+    [list]="   print the current slot's stack (--all for every stack)"
+    [close]="  promote the last-viewed stacked pane into the slot, or close the slot"
+    [focus]="  focus a pane, attaching it to its stack's slot if it's stacked"
+    [on-died]="internal; pane-died hook entry point"
+    [gc]="     prune dead panes, tear down 0/1-pane stacks, kill orphaned sessions"
+    [status]=" print \"M of N\" for a stacked pane, nothing otherwise"
+)
+
+function _load_cmds() {
+    for cmd_file in "${BASH_TOOLS}"/tools/tmux/stack/cmd/*.sh; do
+        # shellcheck source=/dev/null
+        source "${cmd_file}"
+    done
+}
+
+function cmd_descriptions() {
+    # shellcheck disable=SC2207
+    IFS=$'\n' sorted_cmds=($(sort <<< "${!CMDS[*]}")) ; unset IFS
+
+    for cmd in "${sorted_cmds[@]}"; do
+        echo "    ${cmd}       ${CMDS[${cmd}]}"
+    done
+}
+
+USAGE="tmux-stack <cmd> [args] {flags}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Stacks multiple panes in a single tmux layout slot.
+
+    "new" opens a fresh shell on top of the current pane, in the same directory;
+    "next"/"prev" cycle the stack; "close" (or a stacked shell exiting) promotes
+    the last-viewed pane of the stack into the slot. The window layout never
+    changes: panes the stack isn't showing are detached into a holding session and
+    moved in and out of the slot w/ swap-pane.
+
+CMDS
+
+$(cmd_descriptions)
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    CMD             the sub-command to run (see CMDS)
+    PANE            optional, defaults to the calling pane; the pane to operate
+                    on (required for on-died, focus)
+
+OPTIONS
+
+    --dir           optional (new only), defaults to the current pane's
+                    directory; the directory to open the new pane in
+
+FLAGS
+
+    -a, --all       optional (list only); list every stack, incl. orphans
+    -h, --help      display this message
+
+GLOBALS
+
+    STORE_ROOT      the directory under which stack state is kept; defaults to
+                    "\${XDG_STATE_HOME:-\$HOME/.local/state}/tmux"
+help
+}
+
+## main
+
+_load_cmds
+
+LogFlags::process_log_flags "$@"
+
+FIRST="${1:-}"
+
+if [[ -z "${FIRST}" ]] || [[ "${FIRST}" == "-h" ]] || [[ "${FIRST}" == "--help" ]]; then
+    help && exit 0
+fi
+
+if ! check::one_of "${FIRST}" "${!CMDS[@]}"; then
+    ulogger error "unrecognized command: ${FIRST}"
+    usage >&2
+    exit 1
+fi
+
+CMD="${FIRST}" ; shift
+
+tmux::is -e
+
+"cmd::${CMD//-/_}" "$@"

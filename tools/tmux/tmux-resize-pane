@@ -1,0 +1,240 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/api/tmux.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/log/utils.sh"
+
+
+# Pane resizing w/ a one-step undo.
+#
+# "set" resizes a pane the way "tmux resize-pane" does, stashing the window's
+# layout when the resize changes it; "back" restores that layout, stashing the
+# current one in its place, so repeated "back" presses toggle between the two.
+#
+# The stash is the window's layout string, not the pane's dimensions: resizing a
+# pane redistributes space among its siblings, so replaying the layout is the
+# only faithful inverse. It lives in a window option, and so dies w/ the window.
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="tmux"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="resize"
+
+declare -A CMDS=(
+    [set]=" resize a pane, stashing the window's layout if it changes"
+    [back]="restore the window's stashed layout, stashing the current one"
+    [show]="print the stashed and current layouts"
+)
+
+# the layout to return to on "back"
+PREV_OPT="@resize_prev"
+
+## usage #######################################################################
+
+function cmd_descriptions() {
+    # shellcheck disable=SC2207
+    IFS=$'\n' sorted_cmds=($(sort <<< "${!CMDS[*]}")) ; unset IFS
+
+    for cmd in "${sorted_cmds[@]}"; do
+        echo "    ${cmd}       ${CMDS[${cmd}]}"
+    done
+}
+
+USAGE="tmux-resize-pane <cmd> [pane] {flags}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Resizes tmux panes w/ a one-step undo.
+
+    "set" resizes a pane like "tmux resize-pane" does, stashing the window's
+    layout when the resize changes it. "back" restores that layout, stashing the
+    layout it replaced, so repeated "back" calls toggle between the two.
+
+    What's stashed is the window's layout string, not the pane's dimensions:
+    resizing a pane redistributes space among its siblings, so replaying the
+    layout is the only faithful inverse. The stash lives in a window option, and
+    so dies w/ the window.
+
+CMDS
+
+$(cmd_descriptions)
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    CMD             the sub-command to run (see CMDS)
+    PANE            optional, defaults to the calling pane; the pane to act on
+
+OPTIONS
+
+    -t, --target    optional, defaults to the calling pane; as PANE, above
+    -x, --width     set only; the target width, as "tmux resize-pane -x" takes
+                    it (e.g.: "120", "75%")
+    -y, --height    set only; the target height, as "tmux resize-pane -y" takes
+                    it (e.g.: "40", "90%")
+
+FLAGS
+
+    -h, --help      display this message
+help
+}
+
+## helpers #####################################################################
+
+# Resolves the window holding a pane, as a window id (e.g.: "@3").
+function _window_of() {
+    tmux display-message -pt "${1}" '#{window_id}'
+}
+
+# Prints a window's current layout string.
+function _layout_of() {
+    tmux display-message -pt "${1}" '#{window_layout}'
+}
+
+function _get_prev() {
+    tmux show-options -w -t "${1}" -v "${PREV_OPT}" 2> /dev/null || true
+}
+
+function _set_prev() {
+    tmux set-option -w -t "${1}" "${PREV_OPT}" "${2}"
+}
+
+function _unset_prev() {
+    tmux set-option -w -t "${1}" -u "${PREV_OPT}" 2> /dev/null || true
+}
+
+## sub-commands ################################################################
+
+# set [pane] [-x size] [-y size]
+#
+# Resizes a pane, stashing the window's layout if -- and only if -- the resize
+# actually changed it. -x/-y take anything "tmux resize-pane" takes, incl.
+# percentages of the window (e.g.: "75%").
+#
+# Gating the stash on a real change is what makes this safe to hold down: a
+# resize to dimensions the pane already has stashes nothing, so the undo target
+# stays the layout from before the first resize that did something.
+function cmd::set() {
+    local pane="" x="" y=""
+    local win cur new
+
+    while [[ $# -gt 0 ]]; do
+      case "${1}" in
+        -x|--width) [[ -n "${2:-}" ]] && x="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+        -y|--height) [[ -n "${2:-}" ]] && y="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+        -t|--target) [[ -n "${2:-}" ]] && pane="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+        -v*|-q*) shift ;;
+        *) pane="${1}" ; shift ;;
+      esac
+    done
+
+    if [[ -z "${x}" ]] && [[ -z "${y}" ]]; then
+        ulogger error "at least one of -x|--width, -y|--height is required"
+        return 1
+    fi
+
+    [[ -z "${pane}" ]] && pane="$(tmux::pane_id)"
+    win="$(_window_of "${pane}")"
+    cur="$(_layout_of "${win}")"
+
+    local -a dims=()
+    [[ -n "${x}" ]] && dims+=(-x "${x}")
+    [[ -n "${y}" ]] && dims+=(-y "${y}")
+
+    tmux resize-pane -t "${pane}" "${dims[@]}"
+    new="$(_layout_of "${win}")"
+
+    if [[ "${new}" == "${cur}" ]]; then
+        ulogger debug "pane ${pane} already ${x:-current}x${y:-current}; keeping stash"
+        return 0
+    fi
+
+    _set_prev "${win}" "${cur}"
+    ulogger info "resized pane ${pane} to ${x:-current}x${y:-current}; stashed ${cur}"
+}
+
+# back [pane]
+#
+# Restores the window's stashed layout and stashes the layout it replaced, so
+# calling this twice lands back where it started. A no-op when nothing has been
+# stashed, or when the stashed layout no longer describes the window's panes
+# (i.e.: a pane was opened or closed since the stash).
+function cmd::back() {
+    local pane=""
+    local win cur prev
+
+    while [[ $# -gt 0 ]]; do
+      case "${1}" in
+        -t|--target) [[ -n "${2:-}" ]] && pane="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+        -v*|-q*) shift ;;
+        *) pane="${1}" ; shift ;;
+      esac
+    done
+
+    [[ -z "${pane}" ]] && pane="$(tmux::pane_id)"
+    win="$(_window_of "${pane}")"
+    prev="$(_get_prev "${win}")"
+
+    if [[ -z "${prev}" ]]; then
+        ulogger warn "no stashed layout for window ${win}"
+        return 0
+    fi
+
+    cur="$(_layout_of "${win}")"
+
+    if ! tmux select-layout -t "${win}" "${prev}" 2> /dev/null; then
+        ulogger warn "stashed layout no longer applies to window ${win}; dropping it"
+        _unset_prev "${win}"
+        return 0
+    fi
+
+    # swap, so a second "back" undoes this one
+    _set_prev "${win}" "${cur}"
+    ulogger info "restored stashed layout for window ${win}: ${prev}"
+}
+
+# show [pane]
+#
+# Prints the stashed and current layouts for a pane's window.
+function cmd::show() {
+    local pane="${1:-}"
+    local win
+
+    [[ -z "${pane}" ]] && pane="$(tmux::pane_id)"
+    win="$(_window_of "${pane}")"
+
+    echo "window:  ${win}"
+    echo "current: $(_layout_of "${win}")"
+    echo "stashed: $(_get_prev "${win}")"
+}
+
+## main ########################################################################
+
+LogFlags::process_log_flags "$@"
+
+FIRST="${1:-}"
+
+if [[ -z "${FIRST}" ]] || [[ "${FIRST}" == "-h" ]] || [[ "${FIRST}" == "--help" ]]; then
+    help && exit 0
+fi
+
+if ! check::one_of "${FIRST}" "${!CMDS[@]}"; then
+    ulogger error "unrecognized command: ${FIRST}"
+    usage >&2
+    exit 1
+fi
+
+CMD="${FIRST}" ; shift
+
+tmux::is -e
+
+"cmd::${CMD}" "$@"

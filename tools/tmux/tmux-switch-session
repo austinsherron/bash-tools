@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/api/tmux.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/log/utils.sh"
+
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="tmux"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="session"
+
+USAGE="tmux-switch-session [-d n|p] [-x pattern] {flags}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Switches the client to the next or previous session, skipping internal
+    sessions.
+
+    tmux's own "switch-client -n|-p" cycles every session on the server, which
+    drops the client into sessions used for internal tools (i.e.: tmux-stack's 
+    "_stack-*" holding sessions and tmux-popup's "popup-*"). 
+
+USAGE
+
+    ${USAGE}
+
+OPTIONS
+
+    -d, --direction     optional, defaults to "${DIRECTION}"; "n"|"next" or "p"|"prev"
+    -x, --exclude       optional, defaults to "${EXCLUDE}"; an extended regex;
+                        sessions whose names match are skipped
+
+FLAGS
+
+    -h, --help          display this message
+help
+}
+
+
+declare -a SESSIONS=()
+DIRECTION="n"
+CURRENT=""
+TARGET=""
+IDX=-1
+TARGET=""
+N=""
+
+# sessions whose names match this are internal; "_"-prefixed is the convention
+# for hidden tmux objects in this config (see also: "_hidden_pane")
+EXCLUDE="^(_|popup-)"
+
+function _validate_is_tmux() {
+    tmux::is || exit 0
+}
+
+function _set_direction() {
+    case "${DIRECTION}" in
+      n|next) DIRECTION="next" ;;
+      p|prev|previous) DIRECTION="prev" ;;
+      *) ulogger error "invalid direction: ${DIRECTION}" ; usage >&2 ; exit 1 ;;
+    esac
+}
+
+function _set_current() {
+    CURRENT="$(tmux display-message -p '#{session_name}')"
+}
+
+function _set_sessions() {
+    mapfile -t SESSIONS < <(tmux list-sessions -F '#{session_name}' 2> /dev/null | grep -Ev "${EXCLUDE}" || true)
+    N="${#SESSIONS[@]}"
+
+    (( N > 0 )) && return 0
+    ulogger warn "no sessions to switch to (all excluded by /${EXCLUDE}/)"
+    exit 0
+}
+
+function _set_session_idx() {
+    for (( i = 0; i < N; i++ )); do
+        if [[ "${SESSIONS[i]}" == "${CURRENT}" ]]; then
+            IDX="${i}"
+            break
+        fi
+    done
+}
+
+function _init() {
+    _set_direction
+    _set_current
+    _set_sessions
+    _set_session_idx
+}
+
+function _compute_target() {
+    if (( IDX < 0 )); then
+        # the client is sitting on an excluded session; the nearest thing to "next"
+        # is the first session it should have been on
+        TARGET="${SESSIONS[0]}"
+    elif (( N < 2 )); then
+        ulogger debug "only one session (${CURRENT}) to switch between"
+        exit 0
+    elif [[ "${DIRECTION}" == "next" ]]; then
+        TARGET="${SESSIONS[(IDX + 1) % N]}"
+    else
+        TARGET="${SESSIONS[(IDX - 1 + N) % N]}"
+    fi
+}
+
+function _switch_session() {
+    ulogger debug "switching from session ${CURRENT} to ${TARGET}"
+    tmux switch-client -t "=${TARGET}"
+}
+
+LogFlags::process_log_flags "$@"
+
+while [[ $# -gt 0 ]]; do
+  case "${1}" in
+    -d|--direction) [[ -n "${2:-}" ]] && DIRECTION="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -x|--exclude) [[ -n "${2:-}" ]] && EXCLUDE="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -h|--help) help && exit 0 ;;
+    -v*|-q*) shift ;;
+    *) shift ;;
+  esac
+done
+
+
+## main
+
+_init
+_compute_target
+_switch_session

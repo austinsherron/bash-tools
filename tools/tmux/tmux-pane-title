@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/api/tmux.sh"
+source "${BASH_LIB}/log/utils.sh"
+
+source "${BASH_TOOLS}/tools/tmux/_helpers/stack.sh"
+
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="tmux"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="title"
+
+USAGE="tmux-pane-title [title ...] [-t pane] [-c] {flags}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+DESCRIPTION
+
+    Titles a pane. The title is shown on the pane's border in place of its path,
+    and -- for a pane in a stack (see: tmux-stack) -- ahead of the pane's place
+    in that stack, e.g.: "logs (2 of 3)".
+
+    With no title and no -c, prints the pane's current title, if any.
+
+    The title is kept as the per-pane option "${OPT}" rather than as tmux's own
+    pane title, which applications overwrite via terminal escape sequences.
+
+USAGE
+
+    ${USAGE}
+
+POSITIONAL ARGUMENTS
+
+    TITLE           multi-valued; the title to set; an empty title clears it
+
+OPTIONS
+
+    -t, --target    optional, defaults to the calling pane; the pane to title
+
+FLAGS
+
+    -c, --clear     remove the pane's title
+    -h, --help      display this message
+help
+}
+
+
+OPT="@pane_title"
+
+PANE=""
+CLEAR=""
+TITLE=()
+
+function _init() {
+    [[ -z "${PANE}" ]] && PANE="$(tmux::pane_id)"
+
+    # a title of only whitespace is a clear--that's what an empty command-prompt
+    # response looks like by the time it gets here
+    JOINED="${TITLE[*]:-}"
+    [[ -z "${JOINED// /}" ]] && [[ "${#TITLE[@]}" -gt 0 ]] && CLEAR="true"
+
+    return 0
+}
+
+# a stacked pane is listed by title in its stack's border trail, so the trail has
+# to be rebuilt whenever a title changes
+function _relabel_stack() {
+    local group
+
+    group="$(__stack::group "${PANE}")"
+    [[ -z "${group}" ]] && return 0
+
+    __stack::relabel "${group}"
+}
+
+function _should_show_title() {
+    [[ "${#TITLE[@]}" -eq 0 ]] && [[ -z "${CLEAR}" ]]
+}
+
+function _show_pane_title() {
+    tmux show-options -p -t "${PANE}" -v "${OPT}" 2> /dev/null || true
+    return 0
+}
+
+function _set_pane_title() {
+    if [[ -n "${CLEAR}" ]]; then
+        tmux set-option -p -t "${PANE}" -u "${OPT}" 2> /dev/null || true
+        ulogger info "cleared the title of pane ${PANE}"
+    else
+        tmux set-option -p -t "${PANE}" "${OPT}" "${JOINED}"
+        ulogger info "titled pane ${PANE} \"${JOINED}\""
+    fi
+}
+
+function _redraw() {
+    tmux refresh-client -S 2> /dev/null || true
+}
+
+LogFlags::process_log_flags "$@"
+
+while [[ $# -gt 0 ]]; do
+  case "${1}" in
+    -t|--target) [[ -n "${2:-}" ]] && PANE="${2}" ; [[ -n "${2:-}" ]] && shift ; shift ;;
+    -c|--clear) CLEAR="true" ; shift ;;
+    -h|--help) help && exit 0 ;;
+    -v*|-q*) shift ;;
+    *) TITLE+=("${1}") ; shift ;;
+  esac
+done
+
+
+## main
+
+tmux::is -e
+
+_init
+
+if _should_show_title; then
+    _show_pane_title && exit 0
+fi
+
+_set_pane_title
+_relabel_stack
+_redraw
