@@ -44,7 +44,7 @@ source "${BASH_LIB}/log/utils.sh"
 #
 # Both are pruned of dead pane ids on read.
 
-# resolved the same way as tmux-store's, so both live under the tmux state dir
+# resolved the same way as tmux-pane-store's, so both live under the tmux state dir
 export STORE_ROOT="${STORE_ROOT:-${XDG_STATE_HOME:-${HOME}/.local/state}/tmux}"
 
 __STACK_DIR="${STORE_ROOT}/stacks"

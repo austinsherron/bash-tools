@@ -7,7 +7,7 @@ set -Eeuo pipefail
 #
 # Flags a pane, defaulting to the calling pane. States are mutually exclusive, so
 # the pane is dropped from every other state first. A pane the user is already
-# looking at isn't flagged at all (see: tmux-store add-pane).
+# looking at isn't flagged at all (see: tmux-pane-store add-pane).
 function cmd::set() {
     local pane="" state=""
 
@@ -25,9 +25,9 @@ function cmd::set() {
     local other
     for other in "${STATES[@]}"; do
         [[ "${other}" == "${state}" ]] && continue
-        tmux-store remove-pane "${pane}" -s "$(__store_for "${other}")"
+        tmux-pane-store remove-pane "${pane}" -s "$(__store_for "${other}")"
     done
 
-    tmux-store add-pane "${pane}" -s "$(__store_for "${state}")"
+    tmux-pane-store add-pane "${pane}" -s "$(__store_for "${state}")"
     cmd::paint
 }

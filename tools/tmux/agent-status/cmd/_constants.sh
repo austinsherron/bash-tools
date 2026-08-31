@@ -4,8 +4,8 @@
 set -Eeuo pipefail
 
 
-# stores live beside tmux-store's, under the tmux state dir (stack.sh exports
-# STORE_ROOT to it, and child "store"/"tmux-store" calls inherit it)
+# stores live beside tmux-pane-store's, under the tmux state dir (stack.sh exports
+# STORE_ROOT to it, and child "store"/"tmux-pane-store" calls inherit it)
 STORE_PREFIX="agent-"
 # the window-local options the status formats interpolate: the entry's body, and
 # the separator glyphs a powerline theme draws on either side of it

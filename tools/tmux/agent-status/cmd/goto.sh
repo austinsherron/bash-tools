@@ -24,7 +24,7 @@ function cmd::goto() {
     for state in "${STATES[@]}"; do
         [[ "$(store count "$(__store_for "${state}")")" -eq 0 ]] && continue
 
-        tmux-store goto "${which}" -s "$(__store_for "${state}")"
+        tmux-pane-store goto "${which}" -s "$(__store_for "${state}")"
         cmd::paint
         return 0
     done

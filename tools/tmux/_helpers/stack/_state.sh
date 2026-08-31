@@ -25,7 +25,7 @@ function __stack::init_alive() {
 }
 
 # Writes a store's live entries to stdout, oldest first, pruning dead pane ids as
-# a side effect (mirroring the prune in tmux-store's status).
+# a side effect (mirroring the prune in tmux-pane-store's status).
 function __stack::live() {
     local -r file="${1}"
     local pane

@@ -22,7 +22,7 @@ function cmd::clear() {
 
     local state
     for state in "${STATES[@]}"; do
-        tmux-store remove-pane "${pane}" -s "$(__store_for "${state}")"
+        tmux-pane-store remove-pane "${pane}" -s "$(__store_for "${state}")"
     done
 
     cmd::paint

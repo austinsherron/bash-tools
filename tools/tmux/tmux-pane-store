@@ -12,7 +12,7 @@ source "${BASH_TOOLS}/tools/tmux/_helpers/stack.sh"
 
 
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="tmux"
-[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="store"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="pane-store"
 
 ## constants ###################################################################
 
@@ -40,7 +40,7 @@ function cmd_descriptions() {
     done
 }
 
-USAGE="tmux-store <cmd> [args] {flags}"
+USAGE="tmux-pane-store <cmd> [args] {flags}"
 
 usage() {
     echo "usage: ${USAGE}"
@@ -50,8 +50,10 @@ help() {
 cat <<help
 DESCRIPTION
 
-    A generic tmux <-> store bridge. Each sub-command operates on an ordered
-    store (see: store) whose entries are tmux pane ids.
+    A pane-id store w/ tmux semantics. Each sub-command operates on an ordered
+    store (see: store) whose entries are tmux pane ids, adding the tmux behavior
+    a raw store can't: skipping panes the user is already looking at, pruning
+    ids whose panes are gone, focusing a pane, and rendering a status segment.
 
     The store defaults to "${XDG_STATE_HOME:-\$HOME/.local/state}/tmux/store" and
     can be selected w/ -s|--store.
@@ -139,7 +141,7 @@ function cmd::remove_pane() {
 #
 # Prints "<glyph> <count> [win1, win2, ...]" when the store is non-empty, nothing
 # otherwise. Dead panes are pruned from the store as a side effect. Meant to be
-# embedded in the tmux status bar via #(tmux-store status).
+# embedded in the tmux status bar via #(tmux-pane-store status).
 function cmd::status() {
     local store="${DEFAULT_STORE}"
 
