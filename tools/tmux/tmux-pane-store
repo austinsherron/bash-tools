@@ -204,7 +204,7 @@ function cmd::goto() {
             ulogger info "focusing pane ${pane} from store ${store}"
             # a hidden stack pane has to be focused first, or focusing it strands the
             # client in an internal session (see: tmux-stack)
-            __stack::focus "${pane}"
+            stack::focus "${pane}"
             break
         fi
 

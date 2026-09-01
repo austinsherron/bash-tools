@@ -46,24 +46,24 @@ function __stack::live() {
 }
 
 # Writes a stack's live panes to stdout in cycle order.
-function __stack::ring() {
+function stack::ring() {
     __stack::live "$(__stack::file "${1}")"
 }
 
 # Writes a stack's live panes to stdout in visibility order, newest last.
-function __stack::mru() {
+function stack::mru() {
     __stack::live "$(__stack::mru_file "${1}")"
 }
 
 # Adds a pane to a stack's ring. push is idempotent and position-preserving, so
 # re-adding a pane keeps its place in the cycle order.
-function __stack::add() {
+function stack::add() {
     store::push "$(__stack::file "${1}")" "${2}"
 }
 
 # Moves a pane to the newest position of a stack's mru, i.e.: marks it as the
 # one being looked at.
-function __stack::mru_touch() {
+function stack::mru_touch() {
     local -r file="$(__stack::mru_file "${1}")"
 
     store::remove "${file}" "${2}" || true
@@ -71,26 +71,26 @@ function __stack::mru_touch() {
 }
 
 # Removes a pane from both of a stack's stores.
-function __stack::forget() {
+function stack::forget() {
     store::remove "$(__stack::file "${1}")" "${2}" || true
     store::remove "$(__stack::mru_file "${1}")" "${2}" || true
 }
 
 # Kills a pane that's already out of its stack's stores, tearing the stack down
 # if it no longer holds at least two panes.
-function __stack::reap() {
+function stack::reap() {
     local -r group="${1}" pane="${2}"
     local -a ring=()
 
     tmux kill-pane -t "${pane}" 2> /dev/null || true
 
     __stack::load_alive
-    mapfile -t ring < <(__stack::ring "${group}")
+    mapfile -t ring < <(stack::ring "${group}")
 
     if (( ${#ring[@]} < 2 )); then
-        __stack::teardown "${group}"
+        stack::teardown "${group}"
     else
-        __stack::relabel "${group}"
+        stack::relabel "${group}"
     fi
 
     return 0

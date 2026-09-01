@@ -72,10 +72,10 @@ function _init() {
 function _relabel_stack() {
     local group
 
-    group="$(__stack::group "${PANE}")"
+    group="$(stack::group "${PANE}")"
     [[ -z "${group}" ]] && return 0
 
-    __stack::relabel "${group}"
+    stack::relabel "${group}"
 }
 
 function _should_show_title() {

@@ -6,19 +6,19 @@ set -Eeuo pipefail
 # Tears a stack down--a stack of one pane is just a normal pane. Detached panes
 # are never killed: an orphaned stack (i.e.: one whose slot was destroyed by
 # kill-window/kill-session) keeps its shell alive in the holding session.
-function __stack::teardown() {
+function stack::teardown() {
     local -r group="${1}"
-    local -r sess="$(__stack::session "${group}")"
+    local -r sess="$(stack::session "${group}")"
     local pane detached=""
     local -a panes=()
 
-    mapfile -t panes < <(__stack::ring "${group}")
+    mapfile -t panes < <(stack::ring "${group}")
 
     for pane in "${panes[@]}"; do
         [[ -z "${pane}" ]] && continue
 
         __stack::unmark "${pane}"
-        __stack::is_detached "${pane}" "${group}" && detached="${pane}"
+        stack::is_detached "${pane}" "${group}" && detached="${pane}"
     done
 
     if [[ -n "${detached}" ]]; then
@@ -34,43 +34,43 @@ function __stack::teardown() {
 
 # Drops a pane from a stack and promotes the last-viewed stacked pane into its
 # slot, then kills it.
-function __stack::promote() {
+function stack::promote() {
     local -r group="${1}" closing="${2}"
     local replacement=""
     local -a mru=()
 
-    __stack::forget "${group}" "${closing}"
+    stack::forget "${group}" "${closing}"
 
-    mapfile -t mru < <(__stack::mru "${group}")
+    mapfile -t mru < <(stack::mru "${group}")
     (( ${#mru[@]} > 0 )) && replacement="${mru[-1]}"
 
     if [[ -n "${replacement}" ]]; then
-        __stack::swap_in "${replacement}" "${closing}" "${group}"
+        stack::swap_in "${replacement}" "${closing}" "${group}"
         ulogger info "promoted pane ${replacement} into the slot vacated by ${closing}"
     else
         ulogger debug "stack ${group} has no pane left to promote into ${closing}'s slot"
     fi
 
     # the closing pane is detached by now, so killing it can't disturb the layout
-    __stack::reap "${group}" "${closing}"
+    stack::reap "${group}" "${closing}"
     tmux refresh-client -S 2> /dev/null || true
 }
 
 # Swaps the ring neighbor of a slot's pane into that slot.
-function __stack::cycle() {
+function stack::cycle() {
     local -r dir="${1}" slot="${2}"
     local group target=""
     local -a ring=()
     local -i i n idx=-1
 
-    group="$(__stack::group "${slot}")"
+    group="$(stack::group "${slot}")"
 
     if [[ -z "${group}" ]]; then
         ulogger debug "pane ${slot} isn't stacked"
         return 0
     fi
 
-    mapfile -t ring < <(__stack::ring "${group}")
+    mapfile -t ring < <(stack::ring "${group}")
     n="${#ring[@]}"
 
     if (( n < 2 )); then
@@ -98,7 +98,7 @@ function __stack::cycle() {
 
     [[ "${target}" == "${slot}" ]] && return 0
 
-    __stack::swap_in "${target}" "${slot}" "${group}"
+    stack::swap_in "${target}" "${slot}" "${group}"
     ulogger debug "cycled ${dir} from pane ${slot} to ${target} (stack ${group})"
 }
 
@@ -106,17 +106,17 @@ function __stack::cycle() {
 # session. A detached pane's stack is where the user actually wants to land--the
 # holding session is an implementation detail, and switching a client to it
 # would strand them in a session w/ none of their layout.
-function __stack::focus() {
+function stack::focus() {
     local -r pane="${1}"
     local group slot
 
-    group="$(__stack::group "${pane}")"
+    group="$(stack::group "${pane}")"
 
-    if [[ -n "${group}" ]] && __stack::is_detached "${pane}" "${group}"; then
-        slot="$(__stack::slot "${group}")"
+    if [[ -n "${group}" ]] && stack::is_detached "${pane}" "${group}"; then
+        slot="$(stack::slot "${group}")"
 
         if [[ -n "${slot}" ]]; then
-            __stack::swap_in "${pane}" "${slot}" "${group}"
+            stack::swap_in "${pane}" "${slot}" "${group}"
             ulogger info "attached pane ${pane} to stack ${group}'s slot"
         else
             # orphaned: the holding session is the only place it still exists

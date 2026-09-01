@@ -4,15 +4,15 @@ set -Eeuo pipefail
 
 
 # Writes a pane's dimensions to stdout, as "w h".
-function __stack::dims() {
+function stack::dims() {
     tmux display-message -pt "${1}" '#{pane_width} #{pane_height}'
 }
 
 # Opens a fresh shell in a stack's holding session--creating the session if the
 # stack doesn't have one yet--and writes its pane id to stdout.
-function __stack::spawn() {
+function stack::spawn() {
     local -r group="${1}" cwd="${2}" w="${3}" h="${4}"
-    local -r sess="$(__stack::session "${group}")"
+    local -r sess="$(stack::session "${group}")"
     local pane="" win=""
 
     if tmux::is_session "${sess}"; then
@@ -57,24 +57,24 @@ function __stack::resize_to_slot() {
 
     # window size != pane size whenever anything else is drawing chrome; correct
     # for the difference rather than trying to enumerate what might cause it
-    read -r pw ph < <(__stack::dims "${pane}" 2> /dev/null) || true
+    read -r pw ph < <(stack::dims "${pane}" 2> /dev/null) || true
     if (( pw > 0 )) && (( ph > 0 )) && { (( pw != w )) || (( ph != h )) ; }; then
         tmux resize-window -t "${win}" -x "$(( w + w - pw ))" -y "$(( h + h - ph ))" 2> /dev/null || true
     fi
 }
 
 # Attaches a detached pane to a slot, leaving the window layout untouched.
-function __stack::swap_in() {
+function stack::swap_in() {
     local -r target="${1}" slot="${2}" group="${3}"
     local w h
 
-    read -r w h < <(__stack::dims "${slot}")
+    read -r w h < <(stack::dims "${slot}")
     __stack::resize_to_slot "${target}" "${w}" "${h}"
 
     tmux swap-pane -s "${target}" -t "${slot}"
     # swap-pane doesn't leave the active pane deterministic
     tmux select-pane -t "${target}"
 
-    __stack::mru_touch "${group}" "${target}"
+    stack::mru_touch "${group}" "${target}"
     tmux refresh-client -S 2> /dev/null || true
 }

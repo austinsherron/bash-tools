@@ -13,18 +13,18 @@ function cmd::on_died() {
 
     [[ -z "${pane}" ]] && return 0
 
-    group="$(__stack::group "${pane}")"
+    group="$(stack::group "${pane}")"
     # harmless for any other remain-on-exit pane
     [[ -z "${group}" ]] && return 0
 
-    if __stack::is_detached "${pane}" "${group}"; then
+    if stack::is_detached "${pane}" "${group}"; then
         # died out of view; nothing to promote, no layout to preserve
-        __stack::forget "${group}" "${pane}"
-        __stack::reap "${group}" "${pane}"
+        stack::forget "${group}" "${pane}"
+        stack::reap "${group}" "${pane}"
 
         ulogger debug "dropped detached pane ${pane} from stack ${group}"
         return 0
     fi
 
-    __stack::promote "${group}" "${pane}"
+    stack::promote "${group}" "${pane}"
 }

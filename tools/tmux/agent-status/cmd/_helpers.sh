@@ -91,10 +91,10 @@ function __window_for() {
     local target="${pane}"
     local group slot
 
-    group="$(__stack::group "${pane}")"
+    group="$(stack::group "${pane}")"
 
-    if [[ -n "${group}" ]] && __stack::is_detached "${pane}" "${group}"; then
-        slot="$(__stack::slot "${group}")"
+    if [[ -n "${group}" ]] && stack::is_detached "${pane}" "${group}"; then
+        slot="$(stack::slot "${group}")"
         [[ -n "${slot}" ]] && target="${slot}"
     fi
 

@@ -11,13 +11,13 @@ set -Eeuo pipefail
 function cmd::close() {
     local pane group
 
-    pane="$(__stack::target "$@")"
-    group="$(__stack::group "${pane}")"
+    pane="$(stack::target "$@")"
+    group="$(stack::group "${pane}")"
 
     if [[ -z "${group}" ]]; then
         tmux kill-pane -t "${pane}"
         return 0
     fi
 
-    __stack::promote "${group}" "${pane}"
+    stack::promote "${group}" "${pane}"
 }

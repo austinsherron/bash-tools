@@ -24,25 +24,25 @@ function cmd::new() {
     cwd="${dir:-$(tmux display-message -pt "${slot}" '#{pane_current_path}')}"
     validate_dir "${cwd}" "--dir" || return 1
 
-    read -r w h < <(__stack::dims "${slot}")
+    read -r w h < <(stack::dims "${slot}")
 
-    group="$(__stack::group "${slot}")"
-    [[ -z "${group}" ]] && group="$(__stack::name_for "${slot}")"
+    group="$(stack::group "${slot}")"
+    [[ -z "${group}" ]] && group="$(stack::name_for "${slot}")"
 
-    fresh="$(__stack::spawn "${group}" "${cwd}" "${w}" "${h}")" || return 1
+    fresh="$(stack::spawn "${group}" "${cwd}" "${w}" "${h}")" || return 1
 
-    __stack::mark "${slot}" "${group}"
-    __stack::mark "${fresh}" "${group}"
+    stack::mark "${slot}" "${group}"
+    stack::mark "${fresh}" "${group}"
 
     # adds are idempotent + position-preserving, so this also repairs a stack
     # whose state was lost while its panes kept their @pane_stack marks
-    __stack::add "${group}" "${slot}"
-    __stack::add "${group}" "${fresh}"
-    __stack::mru_touch "${group}" "${slot}"
-    __stack::relabel "${group}"
+    stack::add "${group}" "${slot}"
+    stack::add "${group}" "${fresh}"
+    stack::mru_touch "${group}" "${slot}"
+    stack::relabel "${group}"
 
     # the fresh pane lands in the slot, the current pane detaches in its place
-    __stack::swap_in "${fresh}" "${slot}" "${group}"
+    stack::swap_in "${fresh}" "${slot}" "${group}"
 
     ulogger info "stacked new pane ${fresh} onto pane ${slot} (stack ${group})"
 }

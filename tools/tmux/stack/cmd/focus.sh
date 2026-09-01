@@ -9,5 +9,5 @@ set -Eeuo pipefail
 # first, so focusing lands on the window the stack lives in -- not on the
 # detached session the pane happens to be waiting in.
 function cmd::focus() {
-    __stack::focus "$(__stack::target "$@")"
+    stack::focus "$(stack::target "$@")"
 }

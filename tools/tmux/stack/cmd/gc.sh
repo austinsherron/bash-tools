@@ -13,29 +13,29 @@ function cmd::gc() {
     local group sess
     local -a groups=() orphans=() ring=()
 
-    mapfile -t groups < <(__stack::groups)
+    mapfile -t groups < <(stack::groups)
 
     for group in "${groups[@]}"; do
         # reading prunes dead pane ids from both stores
-        __stack::mru "${group}" > /dev/null
-        mapfile -t ring < <(__stack::ring "${group}")
+        stack::mru "${group}" > /dev/null
+        mapfile -t ring < <(stack::ring "${group}")
 
         if (( ${#ring[@]} < 2 )); then
             ulogger info "tearing down stack ${group}: ${#ring[@]} pane(s) left"
-            __stack::teardown "${group}"
+            stack::teardown "${group}"
         else
             # pruning shifts the survivors' positions in the ring
-            __stack::relabel "${group}"
+            stack::relabel "${group}"
         fi
     done
 
-    mapfile -t orphans < <(__stack::sessions)
+    mapfile -t orphans < <(stack::sessions)
 
     for group in "${orphans[@]}"; do
         [[ -z "${group}" ]] && continue
-        __stack::has "${group}" && continue
+        stack::has "${group}" && continue
 
-        sess="$(__stack::session "${group}")"
+        sess="$(stack::session "${group}")"
 
         # no stack behind it--but a detached shell is still the user's shell, so
         # the session only goes away once nothing in it is running

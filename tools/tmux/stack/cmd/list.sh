@@ -23,18 +23,18 @@ function cmd::list() {
     [[ -z "${slot}" ]] && slot="$(tmux::pane_id)"
 
     if [[ -z "${all}" ]]; then
-        group="$(__stack::group "${slot}")"
+        group="$(stack::group "${slot}")"
 
         if [[ -z "${group}" ]]; then
             echo "pane ${slot} isn't stacked"
             return 0
         fi
 
-        __stack::print "${group}" "${slot}"
+        stack::print "${group}" "${slot}"
         return 0
     fi
 
-    mapfile -t groups < <(__stack::groups)
+    mapfile -t groups < <(stack::groups)
 
     if (( ${#groups[@]} == 0 )); then
         echo "no stacks"
@@ -42,7 +42,7 @@ function cmd::list() {
     fi
 
     for group in "${groups[@]}"; do
-        __stack::print "${group}" "${slot}"
+        stack::print "${group}" "${slot}"
         echo
     done
 }

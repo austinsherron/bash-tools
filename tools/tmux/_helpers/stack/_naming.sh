@@ -14,18 +14,18 @@ function __stack::mru_file() {
 }
 
 # the holding session for a stack's detached panes
-function __stack::session() {
+function stack::session() {
     echo "${__STACK_SESS_PREFIX}${1}"
 }
 
 # the name of the stack a pane would create
-function __stack::name_for() {
+function stack::name_for() {
     echo "${1#%}"
 }
 
 # the pane a sub-command should operate on: its first positional arg, falling
 # back to the calling pane
-function __stack::target() {
+function stack::target() {
     while [[ $# -gt 0 ]]; do
         case "${1}" in
           -*) shift ;;

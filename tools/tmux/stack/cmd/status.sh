@@ -13,11 +13,11 @@ function cmd::status() {
     local -a ring=()
     local -i i n
 
-    pane="$(__stack::target "$@")"
-    group="$(__stack::group "${pane}")"
+    pane="$(stack::target "$@")"
+    group="$(stack::group "${pane}")"
     [[ -z "${group}" ]] && return 0
 
-    mapfile -t ring < <(__stack::ring "${group}")
+    mapfile -t ring < <(stack::ring "${group}")
     n="${#ring[@]}"
     (( n < 2 )) && return 0
 
