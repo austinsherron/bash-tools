@@ -71,7 +71,10 @@ function stack::swap_in() {
     read -r w h < <(stack::dims "${slot}")
     __stack::resize_to_slot "${target}" "${w}" "${h}"
 
-    tmux swap-pane -s "${target}" -t "${slot}"
+    # -Z carries the window's zoom across the swap. A swap b/w windows otherwise
+    # drops it, so cycling a stack whose slot was zoomed would unzoom the window;
+    # no-op on a window that isn't zoomed. (tmux >= 3.1)
+    tmux swap-pane -Z -s "${target}" -t "${slot}"
     # swap-pane doesn't leave the active pane deterministic
     tmux select-pane -t "${target}"
 

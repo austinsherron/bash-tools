@@ -84,21 +84,12 @@ function __louder_than() {
     return 1
 }
 
-# The window a pane should color. Usually the pane's or a detached stacked pane's 
-# parent window (see: tmux-stack).
+# The window a pane should color: its own, or--for a pane detached in a stack--
+# the one holding that stack's slot (see: tmux-stack, stack::anchor).
 function __window_for() {
     local -r pane="${1}"
-    local target="${pane}"
-    local group slot
 
-    group="$(stack::group "${pane}")"
-
-    if [[ -n "${group}" ]] && stack::is_detached "${pane}" "${group}"; then
-        slot="$(stack::slot "${group}")"
-        [[ -n "${slot}" ]] && target="${slot}"
-    fi
-
-    tmux display-message -pt "${target}" '#{window_id}' 2> /dev/null || true
+    tmux display-message -pt "$(stack::anchor "${pane}")" '#{window_id}' 2> /dev/null || true
 }
 
 # Writes "<state> <pane>" for every flagged pane that still exists, loudest state

@@ -135,6 +135,8 @@ function tmux::base_pane_idx() {
 #   -w: include window name in output
 #   -p: include pane number in output
 #   -d: the separator to use; defaults to "."
+#   -t: the pane to locate, defaulting to the call site's own (${TMUX_PANE});
+#       ignored w/ -u
 #   -u: display the user's location, instead of the location of the function
 #       call site
 # Outputs:
@@ -145,27 +147,30 @@ function tmux::location() {
     local fmt
     local sep="."
     local user=""
+    local target="${TMUX_PANE:-}"
 
     local OPTIND=1
-    while getopts ":swpud:" opt; do
+    while getopts ":swput:d:" opt; do
       case $opt in
         s) fmt_parts+=("#S") ;;
         w) fmt_parts+=("#W") ;;
         p) fmt_parts+=("#P") ;;
         d) sep="${OPTARG}" ;;
+        t) target="${OPTARG}" ;;
         u) user="true" ;;
-        :) ulogger error "arg required for -d" >&2 ; return 1 ;;
-        \?) ulogger error "valid flags are -swpud" >&2 ; return 1 ;;
+        :) ulogger error "arg required for -${OPTARG}" >&2 ; return 1 ;;
+        \?) ulogger error "valid flags are -swput and -d" >&2 ; return 1 ;;
       esac
     done
 
     [[ "${#fmt_parts[@]}" -eq 0 ]] && fmt_parts=("#S" "#W" "#P")
     fmt="$(str::join "${sep}" ${fmt_parts[@]})"
 
-    if [[ -z "${user}" ]]; then
-        tmux display-message -p -t "${TMUX_PANE}" "${fmt}"
-    else
+    # w/out a pane to aim at, tmux answers for whatever the client is looking at
+    if [[ -n "${user}" ]] || [[ -z "${target}" ]]; then
         tmux display-message -p "${fmt}"
+    else
+        tmux display-message -p -t "${target}" "${fmt}"
     fi
 }
 

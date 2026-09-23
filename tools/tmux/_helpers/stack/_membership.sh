@@ -62,6 +62,45 @@ function stack::slot() {
     done
 }
 
+# Writes the pane whose session/window a pane logically lives in to stdout:
+# itself, or--when it's detached--the pane holding its stack's slot. A holding
+# session is an implementation detail the user never navigates to, so anything
+# naming a pane's location (a notification, a status indicator) wants this
+# rather than where the pane happens to be parked.
+#
+# Resolved from the panes themselves rather than from the stack's stores: it
+# costs a single tmux call, and it still answers for a stack whose state was
+# lost while its panes kept their marks. An orphaned stack--one w/ no member
+# outside the holding session--anchors to the pane itself; there's nowhere
+# better to point.
+function stack::anchor() {
+    local -r pane="${1}"
+    local group sess id pgroup psess
+
+    group="$(stack::group "${pane}")"
+
+    if [[ -z "${group}" ]] || ! stack::is_detached "${pane}" "${group}"; then
+        echo "${pane}"
+        return 0
+    fi
+
+    sess="$(stack::session "${group}")"
+
+    # the stack name comes before the session name: a session name may contain
+    # spaces, and read gives whatever is left over to the last variable
+    while read -r id pgroup psess; do
+        [[ "${pgroup}" == "${group}" ]] || continue
+        [[ "${psess}" == "${sess}" ]] && continue
+
+        echo "${id}"
+        return 0
+    done < <(
+        tmux list-panes -a -F "#{pane_id} #{${__STACK_OPT}} #{session_name}" 2> /dev/null
+    )
+
+    echo "${pane}"
+}
+
 # Checks whether a pane is detached, i.e.: waiting in its stack's holding session
 # rather than sitting in a real window.
 function stack::is_detached() {

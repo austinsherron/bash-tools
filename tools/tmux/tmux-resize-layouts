@@ -25,7 +25,7 @@ USAGE
 
 ADDITIONAL OPTIONS
 
-    -t, --target        optional, multi-valued, defaults to all windows; the names of the windows for which to set a layout
+    -t, --target        optional, multi-valued, defaults to all windows (by id); the names or ids (@N) of the windows for which to set a layout
 
 FLAGS
 
@@ -53,8 +53,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 
+# window ids, not names: names aren't unique (several windows are "bash"), and a
+# name that is a prefix of another would resolve to the wrong window downstream
 if [[ "${#TARGETS[@]}" -eq 0 ]]; then
-    mapfile -t TARGETS < <(tmux list-window -F '#W')
+    mapfile -t TARGETS < <(tmux list-windows -F '#{window_id}')
 fi
 
 for target in "${TARGETS[@]}"; do

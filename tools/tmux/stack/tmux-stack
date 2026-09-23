@@ -23,6 +23,7 @@ declare -A CMDS=(
     [on-died]="internal; pane-died hook entry point"
     [gc]="     prune dead panes, tear down 0/1-pane stacks, kill orphaned sessions"
     [status]=" print \"M of N\" for a stacked pane, nothing otherwise"
+    [anchor]=" print the pane whose session/window a pane lives in"
 )
 
 function _load_cmds() {

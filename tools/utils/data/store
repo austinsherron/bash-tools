@@ -15,27 +15,71 @@ source "${BASH_LIB}/log/utils.sh"
 
 [[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="store"
 
-declare -A CMDS=(
-    [push]="  append a value if not already present (idempotent)"
-    [list]="  print all entries, oldest first"
-    [count]=" print the number of entries"
-    [peek]="  print an entry without removing it (--oldest|--newest)"
-    [pop]="   print and remove an entry (--oldest|--newest)"
-    [remove]="remove the entry matching a value"
-    [has]="   exit 0 if the store contains a value, 1 otherwise"
-    [clear]=" remove all entries"
+# commands valid on either kind of store
+declare -A ANY_CMDS=(
+    [list]="print all entries, oldest first"
+    [count]="print the number of entries"
+    [peek]="print an entry without removing it (--oldest|--newest)"
+    [pop]="print and remove an entry (--oldest|--newest)"
+    [clear]="remove all entries"
     [stores]="list the names of all stores under STORE_ROOT (takes no name)"
 )
 
+# commands for value stores, i.e.: entries addressed by their exact value
+declare -A VALUE_CMDS=(
+    [push]="append a value if not already present (idempotent)"
+    [remove]="remove the entry matching a value"
+    [has]="exit 0 if the store contains a value, 1 otherwise"
+)
+
+# commands for keyed stores, i.e.: records addressed by their first field
+declare -A KV_CMDS=(
+    [kv-upsert]="write a keyed record, replacing the one w/ the same key"
+    [kv-get]="print the keyed record matching a key"
+    [kv-remove]="remove the keyed record matching a key"
+)
+
+declare -A CMDS=()
+for __cmd in "${!ANY_CMDS[@]}"; do CMDS["${__cmd}"]="${ANY_CMDS[${__cmd}]}"; done
+for __cmd in "${!VALUE_CMDS[@]}"; do CMDS["${__cmd}"]="${VALUE_CMDS[${__cmd}]}"; done
+for __cmd in "${!KV_CMDS[@]}"; do CMDS["${__cmd}"]="${KV_CMDS[${__cmd}]}"; done
+unset __cmd
+
 STORE_ROOT="${STORE_ROOT:-${XDG_STATE_HOME:-${HOME}/.local/state}/stores}"
 
-function cmd_descriptions() {
+# the description column, wide enough for the longest command name in any group
+function cmd_width() {
+    local cmd width=0
+
+    for cmd in "${!CMDS[@]}"; do
+        [[ "${#cmd}" -gt "${width}" ]] && width="${#cmd}"
+    done
+
+    echo "$(( width + 4 ))"
+}
+
+# Renders one group of commands, sorted, under a heading.
+function cmd_group() {
+    local -n group="${1}"
+    local -r heading="${2}"
+    local -r width="$(cmd_width)"
+    local cmd sorted_cmds
+
+    printf '  %s\n\n' "${heading}"
+
     # shellcheck disable=SC2207
-    IFS=$'\n' sorted_cmds=($(sort <<< "${!CMDS[*]}")) ; unset IFS
+    IFS=$'\n' sorted_cmds=($(sort <<< "${!group[*]}")) ; unset IFS
 
     for cmd in "${sorted_cmds[@]}"; do
-        echo "    ${cmd}       ${CMDS[${cmd}]}"
+        printf '    %-*s%s\n' "${width}" "${cmd}" "${group[${cmd}]}"
     done
+    echo
+}
+
+function cmd_descriptions() {
+    cmd_group ANY_CMDS   "any store"
+    cmd_group VALUE_CMDS "value stores -- entries addressed by their exact value"
+    cmd_group KV_CMDS    "keyed stores -- records addressed by their first field"
 }
 
 USAGE="store <cmd> <name> [args] {flags}"
@@ -48,14 +92,26 @@ help() {
 cat <<help
 DESCRIPTION
 
-    A generic, insertion-ordered, deduped-by-value store backed by a file.
+    An insertion-ordered store backed by a file.
 
     Each store is identified by a name and lives at:
         \${STORE_ROOT:-\${XDG_STATE_HOME:-\$HOME/.local/state}/stores}/<name>
 
-    Entries are opaque, newline-free strings. "Oldest" is the first-inserted
-    entry; "newest" is the last-inserted. Mutations are serialized w/ a lock so
+    Entries are newline-free strings. "Oldest" is the first-inserted entry;
+    "newest" is the last-inserted. Mutations are serialized w/ a lock so
     concurrent writers are safe.
+
+    A store comes in one of two kinds, and the commands are grouped to match:
+
+        value stores    entries are opaque strings, deduped by exact value
+                        (push, remove, has)
+
+        keyed stores    entries are records whose first tab-delimited field is a
+                        key, deduped by that key (kv-upsert, kv-get, kv-remove)
+
+    A store is one kind or the other -- push on a keyed store appends a duplicate
+    key rather than replacing the record. The remaining commands address entries
+    positionally or not at all, and so are safe on either kind.
 
 CMDS
 
@@ -69,7 +125,8 @@ POSITIONAL ARGUMENTS
 
     CMD             the store command to run (see CMDS)
     NAME            the name of the store to operate on
-    ARGS            command-specific: a value (push/remove/has) or
+    ARGS            command-specific: a value (push/remove/has), a key
+                    (kv-get/kv-remove), a key and a value (kv-upsert), or
                     --oldest|--newest (peek/pop)
 
 FLAGS
@@ -121,5 +178,23 @@ if check::one_of "${CMD}" push remove has; then
     validate_required_positional "value" "${1:-}" || exit 1
 fi
 
+# commands that address a keyed record
+if check::one_of "${CMD}" kv-get kv-remove; then
+    validate_required_positional "key" "${1:-}" || exit 1
+fi
+
+if [[ "${CMD}" == "kv-upsert" ]]; then
+    validate_required_positional "key" "${1:-}" || exit 1
+    validate_required_positional "value" "${2:-}" || exit 1
+fi
+
 FILE="$(__store_path "${NAME}")"
-"store::${CMD}" "${FILE}" "$@"
+
+# "kv-<op>" dispatches into the keyed namespace, everything else into store::
+if [[ "${CMD}" == kv-* ]]; then
+    FN="store::kv::${CMD#kv-}"
+else
+    FN="store::${CMD}"
+fi
+
+"${FN//-/_}" "${FILE}" "$@"
