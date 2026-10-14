@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/args/validate.sh"
+
+# every state this reports, i.e.: tmux-agent-status' own (see: tmux-agent-status)
+STATES=("error" "input" "done")
+
+STATE=""
+
+help() {
+cat <<help
+NAME
+
+    cld-agent-status - Report a Claude Code session's state to its tmux window.
+
+SYNOPSIS
+
+    cld-agent-status -s|--state <error|input|done>
+    cld-agent-status -h|--help
+
+DESCRIPTION
+
+    Flags the calling pane w/ a state, coloring the tmux window it belongs to
+    until the pane is focused (see: tmux-agent-status). A no-op outside tmux.
+
+    Meant to run as a Claude Code hook, one state per event:
+
+        Notification    input, i.e.: the session wants an answer. Match the
+                        hook on the notification types that actually wait on
+                        the user -- "permission_prompt", "idle_prompt" -- b/c
+                        an unmatched Notification hook also fires on types
+                        that want nothing (auth_success, push_notification).
+        Stop            done, i.e.: the session finished its turn
+        StopFailure     error, i.e.: the session ended on an error
+
+OPTIONS
+
+    -s, --state         required; the state to report
+
+FLAGS
+
+    -h, --help          display this message
+help
+}
+
+usage() {
+    echo "usage: cld-agent-status -s|--state <${STATES[*]}>"
+}
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -s|--state)
+      STATE="${2:-}" ; shift ; shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    *)
+      usage >&2 && exit 1 ;;
+  esac
+done
+
+
+## main
+
+validate_required "-s|--state" "${STATE}" || exit 1
+validate_one_of "state" "${STATE}" "${STATES[@]}" || exit 1
+
+tmux-agent-status set "${STATE}"

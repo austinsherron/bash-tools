@@ -1,0 +1,489 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+trap 'ulogger error "error on line $LINENO (exit $?)"' ERR
+
+source "${BASH_LIB}/api/git.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/core/str.sh"
+source "${BASH_LIB}/utils/file.sh"
+
+source "${BASH_TOOLS}/tools/claude/_helpers/handoffs.sh"
+source "${BASH_TOOLS}/tools/claude/_helpers/plans.sh"
+
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="claude"
+export ULOGGER_PREFIX="save"
+
+# What a turn's final message must read like to be saved as each target. A
+# turn-end hook sees every turn, most of which are neither, so a message is only
+# kept when a heading in it says what it is. Deliberately conservative; tune as
+# misses show up.
+declare -A __TURN_END_RE=(
+    [plans]='^#{1,6}[[:space:]]+.*plan'
+    [handoffs]='^#{1,6}[[:space:]]+.*handoff'
+)
+
+# The target claiming a message that reads like both: a handoff laying out a
+# plan is still a handoff. Both targets hook the same event, so this is what
+# keeps them from each saving a copy of it.
+__TURN_END_WINS="handoffs"
+
+usage() {
+    echo "usage: cld-save [plans|handoffs] [-f <file>] [-t <title>] [-r <repo>|-d <dir>] [--sync [--force]]"
+}
+
+help() {
+cat <<help
+NAME
+
+    cld-save - Persist Claude Code plans and handoffs to disk.
+
+SYNOPSIS
+
+    cld-save [plans|handoffs] -f|--file <path> [-t <title>] [-r <repo>|-d <dir>]
+    cld-save [plans|handoffs] [-r <repo>|-d <dir>]      # hook mode (stdin)
+    cld-save [plans|handoffs] --sync [--force] [-r <repo>|-d <dir>]     # both, w/out one
+    cld-save -h|--help
+
+DESCRIPTION
+
+    Writes a plan or a handoff to the directory that target is kept in, taking
+    its content from a file or from a hook event on stdin.
+
+    The targets differ only in where they're written: both are filed per repo,
+    take the same options, and are written where cld-ls reads them, so anything
+    saved here is listed by "cld-ls plans" or "cld-ls handoffs".
+
+TARGETS
+
+    plans       write to \${CLAUDE_DATA_DIR}/plans/<repo>/<title>.md (default).
+                Its singular and "p" are accepted, as they are for every target
+    handoffs    write to \${CLAUDE_DATA_DIR}/handoffs/<repo>/<title>.md
+
+    Both are filed per repo: -r|--repo names the repo, and the current one is
+    used when it doesn't.
+
+    A save writes one document, so naming no target saves a plan. A sync sweeps
+    what's unfiled, so naming no target sweeps both (see: --sync).
+
+MODES
+
+      * File mode: reads content from the file passed via -f|--file.
+      * Hook mode: reads PreToolUse JSON from stdin (configure as a Claude Code
+        hook w/ matcher "ExitPlanMode"). Content comes from .tool_input.plan,
+        falling back to the last Write tool_use of an .md file in the transcript
+        when .tool_input.plan is empty.
+      * Write mode: reads PostToolUse JSON from stdin (matcher "Write|Edit").
+        A write landing directly in the target's unfiled dir is filed under the
+        repo it was written from, keeping its filename. This is what catches a
+        document written to a file rather than into a reply -- which is most of
+        them, past a certain size. Any other write is a silent no-op.
+      * Turn-end mode: reads Stop JSON from stdin. Content comes from
+        .last_assistant_message, and is kept only when a heading in it says it's
+        the target. It's what catches either written straight into a reply:
+        ExitPlanMode fires only in plan mode, and nothing fires for a handoff at
+        all. A turn reading like neither is a silent no-op; one reading like
+        both is saved once, as a handoff.
+      * Sync mode (--sync): saves every file in the directory unfiled documents
+        land in, one save per file, for each target the run covers (see:
+        FLAGS).
+
+    If --title is not provided, the output filename is derived from the content's
+    first line: leading "# " and "Plan: " are stripped, the result is lowercased,
+    spaces are replaced with dashes, and special characters are sanitized. A
+    ".md" extension is appended if absent.
+
+OPTIONS
+
+    -f, --file          read content from this file; what selects file mode
+                        over hook mode
+    -t, --title         filename (w/ or w/out extension) for the saved file
+    -r, --repo          the repo to file the plan/handoff under, i.e.: the
+                        subdirectory of the target's directory to write to
+                        (default: the current repo)
+    -d, --dir           absolute directory to write to, overriding the directory
+                        the target is kept in (and --repo)
+
+POSITIONAL ARGUMENTS
+
+    TARGET              what to save (default: plans, or both w/ --sync); see:
+                        TARGETS
+
+FLAGS
+
+        --sync          save every file in the directory unfiled documents
+                        land in, rather than one named file:
+
+                          plans       \${CLAUDE_CONFIG_DIR}/plans
+                          handoffs    \${CLAUDE_CONFIG_DIR}/handoffs
+
+                        Covers the target named, or both when none is, each
+                        swept from its own directory into its own destination.
+
+                        Each file keeps its own name and its modification date,
+                        and is filed under -r|--repo as any other save is. What
+                        it reads is left where it is, and a file whose content
+                        is already saved is skipped, so a sync can be re-run.
+                        A file whose saved copy is newer than it is skipped too,
+                        so an edit made to the saved copy isn't overwritten (see:
+                        --force). Sub-directories are skipped rather than
+                        descended into, as a saved document is a file
+        --force         w/ --sync, overwrite a saved copy even when it's newer
+                        than the file being synced
+    -h, --help          display this message
+help
+}
+
+
+# Displays the target -- what cld-save writes -- named by an argument, which may
+# be a target's name, its singular, or its first letter.
+function _normalize_target() {
+    case "${1}" in
+        p|plan|plans)       echo "plans" ;;
+        h|handoff|handoffs) echo "handoffs" ;;
+        # this function's stdout is captured by its caller, so diagnostics go to
+        # stderr
+        *) ulogger error "unrecognized target: '${1}'" >&2 ; return 1 ;;
+    esac
+}
+
+
+TARGET=""
+HOOK_EVENT=""
+REPO=""
+OUT_DIR=""
+SESSION_ID=""
+TRANSCRIPT_PATH=""
+CONTENT=""
+SYNC=""
+FORCE=""
+FILE_IN=""
+FILE_OUT=""
+TITLE=""
+ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -f|--file)
+      FILE_IN="${2}" ; shift ; shift ;;
+    -t|--title)
+      TITLE="${2}" ; shift ; shift ;;
+    -r|--repo)
+      REPO="${2}" ; shift ; shift ;;
+    -d|--dir)
+      OUT_DIR="${2}" ; shift ; shift ;;
+    --sync)
+      SYNC="true" ; shift ;;
+    --force)
+      FORCE="true" ; shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    *)
+      ARGS+=("${1}") ; shift ;;
+  esac
+done
+
+if [[ "${#ARGS[@]}" -gt 1 ]]; then
+    ulogger error "cld-save takes at most one target: ${ARGS[*]}"
+    usage >&2
+    exit 1
+fi
+
+TARGET="$(_normalize_target "${ARGS[0]:-plans}")" || { usage >&2 ; exit 1 ; }
+
+# The targets a sync covers. A save writes one document and so has one target,
+# which is why plans is the default; a sync sweeps whatever is unfiled, so
+# naming no target sweeps both rather than half of what's waiting.
+SYNC_TARGETS=("${TARGET}")
+[[ -n "${SYNC}" ]] && [[ "${#ARGS[@]}" -eq 0 ]] && SYNC_TARGETS=("plans" "handoffs")
+
+# a sync reads its files from a directory and keeps each one's name, so neither
+# a file to read nor a name to save under means anything to it
+validate_mutually_exclusive "${SYNC}" "--sync" "${FILE_IN}" "-f|--file" || exit 1
+validate_mutually_exclusive "${SYNC}" "--sync" "${TITLE}" "-t|--title" || exit 1
+
+# a single save writes what it's given, so only a sync has a newer copy to guard
+if [[ -n "${FORCE}" ]] && [[ -z "${SYNC}" ]]; then
+    ulogger error "--force only applies w/ --sync"
+    usage >&2
+    exit 1
+fi
+
+
+function _make_title_from_content() {
+    local title
+
+    title="$(head -n1 <<< "${CONTENT}")"
+
+    if [[ -z "${title}" ]] && [[ -n "${SESSION_ID}" ]]; then
+        title="${SESSION_ID:0:8}"
+    elif [[ -z "${title}" ]]; then
+        # this function's stdout is captured by its caller, so diagnostics go to
+        # stderr
+        ulogger error "unable to determine ${TARGET%s} title" >&2
+        return 1
+    else
+        # a heading of any level, not just h1: __TURN_END_RE accepts h2-h6, so
+        # the marker comes off w/ a pattern rather than a literal "# " -- which
+        # would leave "##" behind, and the target's own strip below missing
+        title="$(sed -E 's/^#{1,6}[[:space:]]*//' <<< "${title}")"
+        title="$(str::strip -s "Plan: " -l "${title}")"
+        title="$(str::strip -s "Handoff: " -l "${title}")"
+        title="$(str::replace -s " " -t "-" "${title}")"
+        title="$(str::lower "${title}")"
+        title="$(path::sanitize_name "${title}")"
+        title="$(str::squeeze "${title}" "-")"
+    fi
+
+    echo "${title}"
+}
+
+function _make_file_path() {
+    local title
+
+    if [[ -n "${TITLE}" ]]; then
+        title="${TITLE}"
+    else
+        title="$(_make_title_from_content)" || return 1
+    fi
+
+    path::has_ext "${title}" || title+=".md"
+    FILE_OUT="${OUT_DIR}/${title}"
+}
+
+function _get_content_from_file() {
+    validate_required "-f|--file" "${FILE_IN}" || return 1
+    validate_file "${FILE_IN}" "-f|--file" || return 1
+
+    CONTENT="$(< "${FILE_IN}")"
+}
+
+function _get_content_from_transcript() {
+    # fallback when tool_input.plan is empty; extract the most recent plan content from the
+    # transcript by looking for the last Write tool_use to a .md file in assistant messages.
+    jq -r '
+        select(.role == "assistant")
+        | .content[]?
+        | select(.type == "tool_use" and .name == "Write")
+        | .input.content // empty
+    ' "${TRANSCRIPT_PATH}" 2>/dev/null | tail -1
+}
+
+# The turn-end hook's content, i.e.: a final message that reads like the target
+# (see: __TURN_END_RE). Anything else leaves CONTENT empty, which main treats as
+# a no-op, b/c this runs on every turn rather than on an explicit save.
+function _get_content_from_message() {
+    local -r input="${1}"
+    local message ; message="$(jq -r '.last_assistant_message // empty' <<< "${input}")"
+
+    [[ -n "${message}" ]] || return 0
+
+    if ! grep -qiE "${__TURN_END_RE[${TARGET}]}" <<< "${message}"; then
+        ulogger debug "final message doesn't read as a ${TARGET%s}; skipping"
+        return 0
+    fi
+
+    # the loser of a message reading like both defers rather than saving a
+    # second copy of it (see: __TURN_END_WINS)
+    if [[ "${TARGET}" != "${__TURN_END_WINS}" ]] \
+       && grep -qiE "${__TURN_END_RE[${__TURN_END_WINS}]}" <<< "${message}"; then
+        ulogger debug "final message reads as a ${__TURN_END_WINS%s}; leaving it to that hook"
+        return 0
+    fi
+
+    CONTENT="${message}"
+}
+
+# The file a Write/Edit landed in, when it's an unfiled plan or handoff. A
+# document big enough to be worth keeping is written to a file rather than into
+# a reply, so the turn-end hook never sees it (see: _get_content_from_message);
+# this is what catches those. Only a write directly into the target's unfiled
+# dir counts, so a write to one of its sub-directories is skipped, as --sync
+# skips them.
+function _get_content_from_write() {
+    local -r input="${1}"
+    local file ; file="$(jq -r '.tool_input.file_path // empty' <<< "${input}")"
+
+    [[ -n "${file}" ]] && [[ -f "${file}" ]] || return 0
+    [[ "$(dirname "${file}")" == "$("${TARGET}::unfiled_dir")" ]] || return 0
+
+    FILE_IN="${file}"
+    # the name a document was written under is already meaningful, and keeping
+    # it is what makes this agree w/ --sync rather than filing a second copy
+    # under a title derived from the document's first line
+    [[ -n "${TITLE}" ]] || TITLE="$(basename "${file}")"
+
+    _get_content_from_file
+}
+
+function _get_content_from_pipe() {
+    local input ; input="$(< /dev/stdin)"
+
+    SESSION_ID="$(echo "${input}" | jq -r '.session_id // empty')"
+    TRANSCRIPT_PATH="$(echo "${input}" | jq -r '.transcript_path // empty')"
+    HOOK_EVENT="$(echo "${input}" | jq -r '.hook_event_name // empty')"
+
+    if [[ "${HOOK_EVENT}" == "Stop" ]]; then
+        _get_content_from_message "${input}"
+        return 0
+    fi
+
+    if [[ "${HOOK_EVENT}" == "PostToolUse" ]]; then
+        _get_content_from_write "${input}"
+        return 0
+    fi
+
+    CONTENT="$(echo "${input}" | jq -r '.tool_input.plan // empty')"
+
+    if [[ -z "${CONTENT}" && -n "${TRANSCRIPT_PATH}" && -f "${TRANSCRIPT_PATH}" ]]; then
+        CONTENT="$(_get_content_from_transcript)"
+    fi
+}
+
+# Reads the content to save. A named file is read as itself, so that file mode
+# works wherever it's called from; hook mode is what's left, i.e.: a stdin that
+# isn't a terminal and no file to read instead of it.
+function _get_content() {
+    if [[ -n "${FILE_IN}" ]] || [[ -t 0 ]]; then
+        _get_content_from_file
+    else
+        _get_content_from_pipe
+    fi
+}
+
+function _setup::set_defaults() {
+    [[ -n "${OUT_DIR}" ]] && return 0
+
+    if [[ -z "${REPO}" ]] && ! git::in_repo; then
+        ulogger error \
+            "a ${TARGET%s} is filed per repo: run inside one, or name one w/ -r|--repo"
+        return 1
+    fi
+
+    # both targets are filed per repo and namespace their helpers by their own
+    # name, so the directory to write to is the target's own dir_for (see:
+    # plans, handoffs)
+    OUT_DIR="$("${TARGET}::dir_for" "${REPO}")" || return 1
+}
+
+function _main::save() {
+    mkdir -p "${OUT_DIR}"
+    echo "${CONTENT}" >| "${FILE_OUT}"
+    ulogger info "saved ${TARGET%s} to '${FILE_OUT}'"
+}
+
+#######################################
+# Saves every file in the directory unfiled documents of this target land in
+# (see: plans, handoffs), one save per file, so that a document written by hand
+# is filed where the target is kept.
+#
+# The files it reads are left where they are, and a file whose content is
+# already saved is skipped, so a sync can be re-run. A file whose saved copy is
+# newer is skipped as well, unless --force is given, so that an edit made to the
+# saved copy isn't overwritten by an older original. Sub-directories are skipped
+# rather than descended into, as a saved document is a file.
+# Outputs:
+#   Writes a summary of what was saved to stdout
+#######################################
+function _main::sync() {
+    local -r src="$("${TARGET}::unfiled_dir")"
+    local entries=("${src}"/*)
+    local saved=0 unchanged=0 skipped=0
+    local entry
+
+    if [[ ! -e "${entries[0]}" ]]; then
+        ulogger warn "nothing to sync from '${src}'"
+        return 0
+    fi
+
+    for entry in "${entries[@]}"; do
+        if [[ -d "${entry}" ]]; then
+            ulogger debug "skipping directory '${entry}'"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        FILE_IN="${entry}"
+        TITLE="$(basename "${entry}")"
+
+        if ! _get_content_from_file || ! _make_file_path; then
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        if cmp -s "${entry}" "${FILE_OUT}"; then
+            ulogger debug "already saved: '${FILE_OUT}'"
+            unchanged=$((unchanged + 1))
+            continue
+        fi
+
+        if [[ -z "${FORCE}" ]] && [[ "${FILE_OUT}" -nt "${entry}" ]]; then
+            ulogger warn "saved copy is newer, skipping (see: --force): '${FILE_OUT}'"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        _main::save
+        # what was saved is a copy of a document that already existed, so it
+        # carries the date that one was written rather than the date it was
+        # copied -- which is the date cld-ls displays
+        touch -r "${entry}" "${FILE_OUT}"
+        saved=$((saved + 1))
+    done
+
+    printf 'synced %s from %s: %d saved, %d unchanged, %d skipped\n' \
+        "${TARGET}" "${src}" "${saved}" "${unchanged}" "${skipped}"
+}
+
+#######################################
+# Syncs each of the targets the run covers (see: SYNC_TARGETS), each from its
+# own unfiled directory into its own destination.
+# Returns:
+#   0 if every target synced, 1 otherwise
+#######################################
+function _main::sync_all() {
+    # -d|--dir overrides the destination for every target it covers, so it's
+    # kept while the derived destination is resolved again per target
+    local -r override="${OUT_DIR}"
+    local target rc=0
+
+    for target in "${SYNC_TARGETS[@]}"; do
+        TARGET="${target}"
+        OUT_DIR="${override}"
+
+        # a repo is what every destination is derived from, so failing to
+        # resolve one fails the whole run rather than just this target
+        _setup::set_defaults || return 1
+        _main::sync || rc=1
+    done
+
+    return "${rc}"
+}
+
+## main
+
+if [[ -n "${SYNC}" ]]; then
+    _main::sync_all || exit 1
+    exit 0
+fi
+
+_get_content || exit 1
+
+# resolving the target's directory needs a repo, so nothing touches it until
+# there's something worth writing: a turn-end hook runs on every turn, most of
+# them not plans and some not in a repo at all
+if [[ -z "${CONTENT}" ]]; then
+    # a hook running on every turn, or on every write, mostly finds nothing to
+    # save, so only an explicit invocation says so
+    case "${HOOK_EVENT}" in
+        Stop|PostToolUse) ;;
+        *) ulogger warn "no ${TARGET%s} content" ;;
+    esac
+    exit 0
+fi
+
+_setup::set_defaults || exit 1
+_make_file_path || exit 1
+
+_main::save

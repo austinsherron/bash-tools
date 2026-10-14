@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+trap 'ulogger error "error on line $LINENO (exit $?)"' ERR
+
+source "${BASH_LIB}/api/git.sh"
+source "${BASH_LIB}/args/validate.sh"
+
+source "${BASH_TOOLS}/tools/claude/_helpers/projects.sh"
+
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="claude"
+export ULOGGER_PREFIX="archive"
+
+USAGE="cld-archive -s <source> -d <dest> [-n]"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+NAME
+
+    cld-archive - Move Claude Code session history from one directory to another.
+
+SYNOPSIS
+
+    ${USAGE}
+    cld-archive -h|--help
+
+DESCRIPTION
+
+    Moves the Claude Code sessions recorded for <source> into the sessions for
+    <dest>, so that history outlives the directory it was recorded in. Sessions
+    launched from a subdirectory of <source> are moved as well, all of them
+    flattened into <dest>'s single project directory.
+
+    Its intended use is a worktree that is about to be deleted: archiving into
+    its category's default worktree keeps the history reachable (see: dev wt
+    remove, which does this automatically).
+
+    Neither path has to exist: history can be archived after the fact, and
+    <dest> may be a directory that is yet to be created.
+
+    Session transcripts are named by session id, so nothing is overwritten; a
+    file that somehow collides is left in place and reported.
+
+    When run inside a git repo, project directories belonging to other worktrees
+    are never moved, even when the (lossy) directory-name encoding makes them
+    look like they sit beneath <source>.
+
+    The cached sessions move too, so archiving doesn't cost <dest> a rescan of
+    every transcript the next time it's listed (see: cld-index).
+
+OPTIONS
+
+    -s, --source    the directory whose sessions to archive
+    -d, --dest      the directory to archive them to
+
+FLAGS
+
+    -n, --dry-run   display what would be moved; move nothing
+    -h, --help      display this message
+help
+}
+
+
+SOURCE=""
+DEST=""
+DRY_RUN=""
+VERB="archiving"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -s|--source)
+      SOURCE="${2}" ; shift ; shift ;;
+    -d|--dest)
+      DEST="${2}" ; shift ; shift ;;
+    -n|--dry-run)
+      DRY_RUN="true" ; shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    *)
+      usage >&2 && exit 1 ;;
+  esac
+done
+
+validate_required "-s|--source" "${SOURCE}" || exit 1
+validate_required "-d|--dest" "${DEST}" || exit 1
+
+[[ -n "${DRY_RUN}" ]] && VERB="would archive"
+
+
+SOURCE="${SOURCE%/}"
+DEST="${DEST%/}"
+
+DEST_DIR="$(projects::dir_for "${DEST}")"
+PLAN=()
+
+# the project directories _main::archive actually moved, i.e.: those whose cached
+# sessions can be carried over to <dest> (see: _main::archive)
+MOVED=()
+
+# Encoded project dir names for every other worktree in the repo, if any. The
+# encoding can't be reversed, so this is how a sibling worktree whose name
+# extends this one's ("<item>" vs "<item>-1") is kept out of the plan.
+declare -A OTHER_WORKTREES=()
+
+function _setup::collect_other_worktrees() {
+    git::in_repo 2> /dev/null || return 0
+
+    local worktree
+    while IFS= read -r worktree; do
+        [[ "${worktree}" = "${SOURCE}" ]] && continue
+        OTHER_WORKTREES["$(projects::dir_for "${worktree}")"]="true"
+    done < <(git::list_worktrees)
+}
+
+function _is_other_worktree() {
+    [[ -n "${OTHER_WORKTREES[${1}]+x}" ]]
+}
+
+function _setup::build_plan() {
+    local dir
+
+    while IFS= read -r dir; do
+        # never move a directory into itself
+        [[ "${dir}" = "${DEST_DIR}" ]] && continue
+
+        if _is_other_worktree "${dir}"; then
+            ulogger debug "skipping '${dir}': belongs to another worktree"
+            continue
+        fi
+
+        PLAN+=("${dir}")
+    done < <(projects::dirs_under "${SOURCE}")
+}
+
+# The plan is this command's product, not a log line: it goes to stdout so that
+# it's visible regardless of log level (which defaults to WARN).
+function _display_plan() {
+    local dir
+    local count
+    local total=0
+
+    printf '%s sessions into %s\n' "${VERB}" "$(basename "${DEST_DIR}")"
+
+    for dir in "${PLAN[@]}"; do
+        count="$(projects::session_count "${dir}")"
+        total=$((total + count))
+
+        printf '    %s (%s sessions)\n' "$(basename "${dir}")" "${count}"
+    done
+
+    printf '    %s sessions total\n' "${total}"
+}
+
+function _archive_dir() {
+    local dir="${1}"
+    local entry
+    local target
+    local failures=0
+
+    for entry in "${dir}"/*; do
+        [[ -e "${entry}" ]] || continue
+
+        target="${DEST_DIR}/$(basename "${entry}")"
+
+        # A name already taken at <dest> means that session is already archived:
+        # transcripts are named by session id, and ids are uuids, so the same
+        # name in both places is one session rather than two of them.
+        #
+        # That's the state a session still running in <source> leaves behind --
+        # it recreates its transcript the moment the move takes it away, and
+        # again when it flushes on the way out -- so what's left here is a
+        # remnant of a move that already landed, not a move still owed. The
+        # history is where archiving wanted it either way, so the remnant is
+        # reported and left alone rather than failed over: archiving the same
+        # directory twice has to be able to succeed.
+        if [[ -e "${target}" ]]; then
+            ulogger warn "'$(basename "${entry}")' is already archived; leaving '${entry}' in place"
+            continue
+        fi
+
+        mv -n "${entry}" "${DEST_DIR}/" 2> /dev/null || true
+
+        # mv -n exits 0 when it declines to clobber a collision, so whether the
+        # entry moved has to be checked rather than inferred from mv's status --
+        # and it's checked at <dest>, not at <source>: a session still running
+        # in <source> recreates its transcript the moment the move takes it
+        # away, and an entry that came back isn't one that never left
+        if [[ ! -e "${target}" ]]; then
+            ulogger warn "could not move '${entry}'; leaving it in place"
+            failures=$((failures + 1))
+        fi
+    done
+
+    if [[ "${failures}" -gt 0 ]]; then
+        return 1
+    fi
+
+    rmdir "${dir}" 2> /dev/null \
+        || ulogger warn "'${dir}' is not empty; leaving it in place"
+
+    return 0
+}
+
+function _main::archive() {
+    local dir
+    local rc=0
+
+    mkdir -p "${DEST_DIR}"
+
+    for dir in "${PLAN[@]}"; do
+        if _archive_dir "${dir}"; then
+            MOVED+=("${dir}")
+        else
+            rc=1
+        fi
+    done
+
+    return "${rc}"
+}
+
+## main
+
+_setup::collect_other_worktrees
+_setup::build_plan
+
+if [[ "${#PLAN[@]}" -eq 0 ]]; then
+    printf 'no sessions recorded for %s\n' "${SOURCE}"
+    exit 0
+fi
+
+_display_plan
+
+if [[ -n "${DRY_RUN}" ]]; then
+    exit 0
+fi
+
+RC=0
+_main::archive || RC=$?
+
+# Carry the moved sessions' cached records over to <dest> rather than let it
+# rebuild them, which would mean scanning every transcript just moved (see:
+# cld-index). Only the directories that actually moved are merged; one whose move
+# failed keeps its own records, which still describe where its transcripts are.
+if [[ "${#MOVED[@]}" -gt 0 ]]; then
+    # The merge warms a cache; it isn't part of the archive. Every record in the
+    # index is derived from a transcript and repaired by a reconcile (see:
+    # cld-index), so a merge that fails costs <dest> a rescan and no history at
+    # all -- which makes it the wrong thing to fail the archive over, and (under
+    # set -e) the removal that called it, once the sessions are already moved.
+    cld-index merge -d "${DEST}" "${MOVED[@]}" > /dev/null \
+        || ulogger warn "could not carry cached sessions into ${DEST}; they'll be rescanned"
+fi
+
+exit "${RC}"

@@ -1,0 +1,509 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+trap 'ulogger error "error on line $LINENO (exit $?)"' ERR
+
+source "${BASH_LIB}/api/git.sh"
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/validate.sh"
+
+source "${BASH_TOOLS}/tools/claude/_helpers/handoffs.sh"
+source "${BASH_TOOLS}/tools/claude/_helpers/plans.sh"
+
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="claude"
+export ULOGGER_PREFIX="ls"
+
+usage() {
+    echo "usage: cld-ls [sessions|plans|handoffs] [-p <path>|-w <worktree>|-c <category>|--repo] [-v <view>] [-s <sort>] [--format <format>] [-n <count>] [-f] [-r]"
+}
+
+help() {
+cat <<help
+NAME
+
+    cld-ls - List Claude Code sessions, plans, and handoffs.
+
+SYNOPSIS
+
+    cld-ls [sessions|plans|handoffs] [-p <path>|-w <worktree>|-c <category>|--repo]
+           [-v <view>] [-s <sort>] [--format <format>] [-n <count>] [-f] [-r]
+    cld-ls -h|--help
+
+DESCRIPTION
+
+    Lists what a Claude Code session leaves behind: the sessions themselves, the
+    plans they saved, or the handoffs they wrote (see: TARGETS).
+
+    Sessions are those recorded for a directory. Only sessions that have been
+    assigned a title are listed. Each session's title is its most recent custom
+    title; its date is its transcript's last modification time.
+
+    Sessions come from a cached index rather than from the transcripts, which run
+    to hundreds of MB (see: cld-index). The cache is kept current by hooks and
+    repaired as it's read, so a session is listed whether or not a hook ever ran
+    for it -- but a rename can take until the session's next turn to appear.
+
+    Plans and handoffs are files, listed by name w/ their modification date. Only
+    the entries directly beneath the target's directory are listed: a handoff
+    that's a directory of its own is listed as that directory, not as its
+    contents.
+
+TARGETS
+
+    sessions    the sessions recorded for a directory (default). Its singular
+                and "s" are accepted, as they are for every target
+    plans       the plans saved from this repo's sessions (see: cld-save),
+                i.e.: the contents of \${CLAUDE_DATA_DIR}/plans/<repo>
+    handoffs    the handoffs written from this repo's sessions (see: cld-save),
+                i.e.: the contents of \${CLAUDE_DATA_DIR}/handoffs/<repo>
+
+    Plans and handoffs are both filed per repo, so listing either means running
+    inside one: the current repo is what picks the directory.
+
+OPTIONS
+
+    -p, --path      (sessions only) the directory whose sessions to list
+                    (default: cwd)
+    -w, --worktree  (sessions only) a worktree in the current repo whose sessions
+                    to list, identified as "<category>/<item>" or, when
+                    unambiguous, as a bare worktree name
+    -c, --category  (sessions only) list sessions for every worktree in a
+                    category, i.e.: every worktree in one directory beneath the
+                    worktree root
+        --repo      (sessions only) list sessions for all worktrees in the
+                    current repo
+    -v, --view      (sessions only) view mode (default: unique)
+                      unique  when several sessions share a title, show only
+                              the most recent
+                      all     show every session, including duplicate titles
+    -s, --sort      sort key (default: date)
+                      date    sort by date, most recent first: a session's date,
+                              or a file's modification date
+                      name    sort by title/filename (case-insensitive)
+        --format    output format (default: name)
+                      name    title/filename only
+                      all     sessions: date, ID, branch, title (plus
+                              "<category>/<item>" when listing more than one
+                              worktree); plans/handoffs: date, filename
+    -n              display at most this many entries
+
+POSITIONAL ARGUMENTS
+
+    TARGET          what to list (default: sessions); see: TARGETS
+
+FLAGS
+
+    -f, --fzf       pick an entry with fzf; prints the selected session's ID,
+                    or the selected file's path, regardless of --view or
+                    --format. A file's path is put on the clipboard as well
+    -r, --resume    hand the terminal to "claude --resume <session>" for the
+                    session --fzf selected, rather than printing its ID.
+                    Ignored for anything but a session picked w/ --fzf
+    -h, --help      display this message
+help
+}
+
+
+# Displays the target -- what cld-ls lists -- named by an argument, which may be
+# a target's name, its singular, or its first letter.
+function _normalize_target() {
+    case "${1}" in
+        s|session|sessions)   echo "sessions" ;;
+        p|plan|plans)         echo "plans" ;;
+        h|handoff|handoffs)   echo "handoffs" ;;
+        # this function's stdout is captured by its caller, so diagnostics go to
+        # stderr
+        *) ulogger error "unrecognized target: '${1}'" >&2 ; return 1 ;;
+    esac
+}
+
+# Rejects the options that only mean something for sessions: the ones that pick
+# the directories to list, and the view that collapses sessions sharing a title.
+function _validate_target_opts() {
+    [[ "${TARGET}" == "sessions" ]] && return 0
+
+    local opt name val
+    for opt in "-p|--path=${PATH_ARG}" "-w|--worktree=${WORKTREE}" \
+        "-c|--category=${CATEGORY}" "--repo=${REPO}" "-v|--view=${VIEW}"; do
+        name="${opt%%=*}" ; val="${opt#*=}"
+
+        if [[ -n "${val}" ]]; then
+            ulogger error "${name} is only valid when listing sessions"
+            return 1
+        fi
+    done
+}
+
+
+TARGET=""
+PATH_ARG=""
+WORKTREE=""
+CATEGORY=""
+REPO=""
+VIEW=""
+SORT="date"
+FORMAT="name"
+LIMIT=""
+FZF=""
+RESUME=""
+ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -p|--path)
+      PATH_ARG="${2}" ; shift ; shift ;;
+    -w|--worktree)
+      WORKTREE="${2}" ; shift ; shift ;;
+    -c|--category)
+      CATEGORY="${2}" ; shift ; shift ;;
+    --repo)
+      REPO="true" ; shift ;;
+    -v|--view)
+      VIEW="${2}" ; shift ; shift ;;
+    -s|--sort)
+      SORT="${2}" ; shift ; shift ;;
+    --format)
+      FORMAT="${2}" ; shift ; shift ;;
+    -n)
+      LIMIT="${2}" ; shift ; shift ;;
+    -f|--fzf)
+      FZF="true" ; shift ;;
+    -r|--resume)
+      RESUME="true" ; shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    *)
+      ARGS+=("${1}") ; shift ;;
+  esac
+done
+
+if [[ "${#ARGS[@]}" -gt 1 ]]; then
+    ulogger error "cld-ls takes at most one target: ${ARGS[*]}"
+    usage >&2
+    exit 1
+fi
+
+TARGET="$(_normalize_target "${ARGS[0]:-sessions}")" || { usage >&2 ; exit 1 ; }
+
+_validate_target_opts || exit 1
+
+VIEW="${VIEW:-unique}"
+validate_one_of "-v|--view" "${VIEW}" "unique" "all" || exit 1
+validate_one_of "-s|--sort" "${SORT}" "date" "name" || exit 1
+validate_one_of "--format" "${FORMAT}" "name" "all" || exit 1
+
+if [[ -n "${LIMIT}" ]] && ! [[ "${LIMIT}" =~ ^[1-9][0-9]*$ ]]; then
+    ulogger error "-n must be a positive integer, not '${LIMIT}'"
+    exit 1
+fi
+validate_mutually_exclusive "${WORKTREE}" "-w|--worktree" "${REPO}" "--repo" || exit 1
+validate_mutually_exclusive "${PATH_ARG}" "-p|--path" "${REPO}" "--repo" || exit 1
+validate_mutually_exclusive "${PATH_ARG}" "-p|--path" "${WORKTREE}" "-w|--worktree" || exit 1
+validate_mutually_exclusive "${CATEGORY}" "-c|--category" "${REPO}" "--repo" || exit 1
+validate_mutually_exclusive "${CATEGORY}" "-c|--category" "${PATH_ARG}" "-p|--path" || exit 1
+validate_mutually_exclusive "${CATEGORY}" "-c|--category" "${WORKTREE}" "-w|--worktree" || exit 1
+
+
+# whether a worktree column is meaningful (i.e.: sessions may span > 1 worktree)
+MULTI_WORKTREE=""
+
+# parallel arrays: the directories whose sessions to list and the worktree name
+# for each
+DIRS=()
+DIR_NAMES=()
+
+# Resolves a worktree by its "<category>/<item>" identifier or, when only one
+# worktree carries it, by a bare item name. Returns 2 when the name is ambiguous.
+function _worktree_path() {
+    local name="${1}"
+    local matches=()
+    local wt
+
+    while IFS= read -r wt; do
+        if [[ "$(git::worktree_rel "${wt}")" == "${name}" ]] \
+            || [[ "$(basename "${wt}")" == "${name}" ]]; then
+            matches+=("${wt}")
+        fi
+    done < <(git::list_worktrees)
+
+    [[ "${#matches[@]}" -eq 0 ]] && return 1
+
+    # this function's stdout is captured by its caller, so diagnostics go to stderr
+    if [[ "${#matches[@]}" -gt 1 ]]; then
+        ulogger error "'${name}' matches more than one worktree:" >&2
+        for wt in "${matches[@]}"; do
+            ulogger error "    $(git::worktree_rel "${wt}")" >&2
+        done
+        return 2
+    fi
+
+    echo "${matches[0]}"
+}
+
+function _add_dir() {
+    local path="${1}"
+
+    DIRS+=("${path}")
+    DIR_NAMES+=("$(git::worktree_rel "${path}")")
+}
+
+function _setup::collect_dirs() {
+    local wt path rc
+
+    if [[ -n "${REPO}" ]]; then
+        git::in_repo || { ulogger error "--repo must be run inside a git repo" >&2 ; return 1 ; }
+        MULTI_WORKTREE="true"
+        while IFS= read -r wt; do
+            _add_dir "${wt}"
+        done < <(git::list_worktrees)
+    elif [[ -n "${CATEGORY}" ]]; then
+        git::in_repo || { ulogger error "-c|--category must be run inside a git repo" >&2 ; return 1 ; }
+        MULTI_WORKTREE="true"
+        while IFS= read -r wt; do
+            _add_dir "${wt}"
+        done < <(git::worktrees_in "${CATEGORY}")
+
+        if [[ "${#DIRS[@]}" -eq 0 ]]; then
+            ulogger error "no worktrees in category '${CATEGORY}'" >&2
+            return 1
+        fi
+    elif [[ -n "${WORKTREE}" ]]; then
+        git::in_repo || { ulogger error "-w|--worktree must be run inside a git repo" >&2 ; return 1 ; }
+        MULTI_WORKTREE="true"
+
+        path="$(_worktree_path "${WORKTREE}")" || rc=$?
+        if [[ -n "${rc:-}" ]]; then
+            [[ "${rc}" -eq 1 ]] && ulogger error "no worktree named '${WORKTREE}' in this repo" >&2
+            return 1
+        fi
+
+        _add_dir "${path}"
+    else
+        path="$(realpath "${PATH_ARG:-$(pwd)}" 2> /dev/null || echo "${PATH_ARG}")"
+        validate_dir "${path}" "-p|--path" || return 1
+        DIRS+=("${path}")
+        DIR_NAMES+=("$(basename "${path}")")
+    fi
+}
+
+# Emits "<date>\t<id>\t<branch>\t<worktree>\t<title>" for every titled session in
+# every listed directory, taking each directory's sessions from the cached index
+# rather than its transcripts (see: cld-index, which owns the cache and repairs
+# it as it reads).
+function _emit::sessions() {
+    local i name date id branch title
+
+    for i in "${!DIRS[@]}"; do
+        name="${DIR_NAMES[i]}"
+
+        while IFS=$'\t' read -r date id branch title; do
+            printf '%s\t%s\t%s\t%s\t%s\n' "${date}" "${id}" "${branch}" "${name}" "${title}"
+        done < <(cld-index read -p "${DIRS[i]}")
+    done
+}
+
+function _dedup() {
+    if [[ "${VIEW}" == "unique" ]]; then
+        sort -t$'\t' -k1,1r | awk -F'\t' '!seen[$5]++'
+    else
+        cat
+    fi
+}
+
+# Emits "<date>\t<path>\t<name>" for every entry directly beneath a directory,
+# w/ the date the entry's mtime. Dot files are skipped, and sub-directories are
+# emitted as themselves rather than descended into: a handoff that has a
+# directory of its own is one entry, like a handoff that's a single file.
+#
+# The directory need not exist -- a repo has no plans directory until its first
+# plan is saved -- and an empty one is not an error, so either yields nothing.
+function _emit::files() {
+    local -r dir="${1}"
+    local entries=("${dir}"/*)
+
+    [[ -e "${entries[0]}" ]] || return 0
+
+    # "<date>\t<path>" -> "<date>\t<path>\t<name>"
+    stat -f '%Sm	%N' -t '%Y-%m-%d %H:%M' "${entries[@]}" 2> /dev/null \
+        | awk -F'\t' -v OFS='\t' '
+            {
+                name = $2
+                sub(/.*\//, "", name)
+                print $1, $2, name
+            }
+        '
+}
+
+function _sort::sessions() {
+    case "${SORT}" in
+        date) sort -t$'\t' -k1,1r ;;
+        name) sort -t$'\t' -k5,5 -f ;;
+    esac
+}
+
+function _sort::files() {
+    case "${SORT}" in
+        date) sort -t$'\t' -k1,1r ;;
+        name) sort -t$'\t' -k3,3 -f ;;
+    esac
+}
+
+function _format::sessions() {
+    local keyed=""
+    [[ "${1:-}" == "-k" ]] && keyed="true"
+
+    local date id branch worktree title line
+    while IFS=$'\t' read -r date id branch worktree title; do
+        if [[ "${FORMAT}" == "name" ]]; then
+            line="${title}"
+        elif [[ -n "${MULTI_WORKTREE}" ]]; then
+            line="$(printf '%s  %s  %s  %s  %s' "${date}" "${id}" "${worktree}" "${branch}" "${title}")"
+        else
+            line="$(printf '%s  %s  %s  %s' "${date}" "${id}" "${branch}" "${title}")"
+        fi
+
+        if [[ -n "${keyed}" ]]; then
+            printf '%s\t%s\n' "${line}" "${id}"
+        else
+            printf '%s\n' "${line}"
+        fi
+    done
+}
+
+# Renders file records, keying each line w/ the file's path: what --fzf prints
+# for a file is the path, as what it prints for a session is the session's id.
+function _format::files() {
+    local keyed=""
+    [[ "${1:-}" == "-k" ]] && keyed="true"
+
+    local date path name line
+    while IFS=$'\t' read -r date path name; do
+        if [[ "${FORMAT}" == "name" ]]; then
+            line="${name}"
+        else
+            line="$(printf '%s  %s' "${date}" "${name}")"
+        fi
+
+        if [[ -n "${keyed}" ]]; then
+            printf '%s\t%s\n' "${line}" "${path}"
+        else
+            printf '%s\n' "${line}"
+        fi
+    done
+}
+
+# Displays the directory holding the files the target lists. Both file targets
+# are filed per repo and namespace their helpers by their own name, so the
+# directory is the target's own dir_for (see: plans, handoffs).
+function _setup::target_dir() {
+    # diagnostics go to stderr, as this function's stdout is captured by its
+    # caller
+    git::in_repo || {
+        ulogger error "${TARGET} must be listed from inside a git repo" >&2
+        return 1
+    }
+
+    "${TARGET}::dir_for"
+}
+
+# Resumes a session, replacing this process w/ the one --fzf picked out: what
+# was selected is a session to go back to rather than an id to print. Only a
+# session can be resumed, and only --fzf selects one, so -r|--resume is ignored
+# for anything else rather than refused.
+function _resume() {
+    if [[ "${TARGET}" != "sessions" ]]; then
+        ulogger debug "only a session can be resumed; ignoring -r|--resume"
+        return 0
+    fi
+
+    if ! check::installed claude; then
+        ulogger error "claude isn't installed; not resuming '${1}'"
+        return 1
+    fi
+
+    ulogger debug "resuming session '${1}'"
+    exec claude --resume "${1}"
+}
+
+# Puts a file's path on the clipboard, so that what --fzf selected can be pasted
+# somewhere else rather than retyped. A session's id isn't a path and isn't
+# copied; a clipboard that isn't reachable is not an error, as the selection is
+# printed either way.
+function _copy() {
+    [[ "${TARGET}" == "sessions" ]] && return 0
+
+    if ! check::installed clipctl; then
+        ulogger debug "clipctl isn't installed; not copying '${1}'"
+        return 0
+    fi
+
+    # w/out a trailing newline: what's pasted is a path, not a line
+    printf '%s' "${1}" | clipctl copy || ulogger warn "unable to copy '${1}'"
+}
+
+#######################################
+# Displays sorted records, at most -n of them, or pipes them through fzf.
+# Arguments:
+#   records: the records to display, already sorted
+#   format: the function that renders a record, taking -k to key each line w/
+#           the identifier --fzf prints for the selection
+#   empty: what to warn when there are no records
+#######################################
+function _main::display() {
+    local records="${1}"
+    local -r format="${2}"
+
+    if [[ -z "${records}" ]]; then
+        ulogger warn "${3}" >&2
+        return 0
+    fi
+
+    [[ -n "${LIMIT}" ]] && records="$(head -n "${LIMIT}" <<< "${records}")"
+
+    if [[ -z "${FZF}" ]]; then
+        "${format}" <<< "${records}"
+        return 0
+    fi
+
+    local selection
+    selection="$("${format}" -k <<< "${records}" \
+        | fzf --delimiter=$'\t' --with-nth=1 \
+        | cut -f2-)"
+
+    # nothing selected, i.e.: fzf was quit rather than picked from
+    [[ -n "${selection}" ]] || return 0
+
+    _copy "${selection}"
+
+    # a resume replaces this process, so the selection is printed only when
+    # there wasn't one to do (see: _resume)
+    [[ -n "${RESUME}" ]] && { _resume "${selection}" || return 1 ; }
+
+    printf '%s\n' "${selection}"
+}
+
+function _main::list_sessions() {
+    _setup::collect_dirs || return 1
+    _main::display \
+        "$(_emit::sessions | _dedup | _sort::sessions)" \
+        _format::sessions \
+        "no titled sessions found"
+}
+
+function _main::list_files() {
+    local dir ; dir="$(_setup::target_dir)" || return 1
+
+    _main::display \
+        "$(_emit::files "${dir}" | _sort::files)" \
+        _format::files \
+        "no ${TARGET} found"
+}
+
+## main
+
+if [[ "${TARGET}" == "sessions" ]]; then
+    _main::list_sessions || exit 1
+else
+    _main::list_files || exit 1
+fi

@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/args/check.sh"
+
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="claude"
+
+# NOTE: ULOGGER_PREFIX is deliberately not exported: this process is replaced by
+# the tool it dispatches to, which sets its own.
+
+usage() {
+    echo "usage: cld [<cmd>] [args...]"
+}
+
+#######################################
+# Displays the cmds cld dispatches to, i.e.: the name past the hyphen of every
+# "cld-<name>" on the PATH.
+# Outputs:
+#   Writes one cmd name per line to stdout, sorted
+#######################################
+function _cmds() {
+    local -a dirs
+    local dir file name
+
+    IFS=':' read -ra dirs <<< "${PATH}"
+
+    for dir in "${dirs[@]}"; do
+        [[ -d "${dir}" ]] || continue
+
+        for file in "${dir}"/cld-*; do
+            [[ -x "${file}" ]] || continue
+
+            name="${file##*/}"
+            echo "${name#cld-}"
+        done
+    done | sort -u
+}
+
+#######################################
+# Displays a cmd's tool's one-line description, taken from the NAME section of
+# its own help so that this doesn't keep a copy of it. A tool whose help doesn't
+# read that way is described by the tool it runs.
+# Arguments:
+#   cmd: the cmd to describe
+#######################################
+function _describe() {
+    local -r tool="cld-${1}"
+    local desc
+
+    desc="$("${tool}" -h 2> /dev/null | sed -n "s/^[[:space:]]*${tool} - //p" | head -n1)"
+
+    echo "${desc:-runs ${tool}}"
+}
+
+function _cmd_descriptions() {
+    local -a cmds
+    local cmd width=0
+
+    readarray -t cmds < <(_cmds)
+
+    if [[ "${#cmds[@]}" -eq 0 ]]; then
+        echo "    (no cld-* tools on the PATH)"
+        return 0
+    fi
+
+    for cmd in "${cmds[@]}"; do
+        if [[ "${#cmd}" -gt "${width}" ]]; then
+            width="${#cmd}"
+        fi
+    done
+
+    for cmd in "${cmds[@]}"; do
+        printf '    %-*s  %s\n' "${width}" "${cmd}" "$(_describe "${cmd}")"
+    done
+}
+
+help() {
+cat <<help
+NAME
+
+    cld - One entry point for Claude Code and the cld-* tools.
+
+SYNOPSIS
+
+    cld <cmd> [args...]
+    cld [claude args...]
+    cld help
+
+DESCRIPTION
+
+    Dispatches to the cld-* tool its first argument names, handing it every
+    argument that follows: "cld ls -n 5" is "cld-ls -n 5", and
+    "cld save handoff -f x.md" is "cld-save handoff -f x.md".
+
+    Anything else is claude's own and reaches it exactly as given, whether
+    that's a prompt, a flag or one of claude's commands: "cld --resume",
+    "cld -p 'what changed?'", "cld mcp list", or "cld" by itself for a session.
+    An argument beginning w/ "-" is never read as a cmd, so claude's flags get
+    through whatever the cld-* tools come to be called.
+
+    A cmd is any "cld-<name>" on the PATH rather than a list kept here, so a
+    tool deployed later is reachable through cld as soon as it's installed. A
+    name that is both a cmd and one of claude's own commands dispatches to the
+    tool; reach the other as "claude <name>".
+
+CMDS
+
+$(_cmd_descriptions)
+
+    Each takes its own arguments, and its own -h|--help: "cld ls --help".
+
+POSITIONAL ARGUMENTS
+
+    CMD             the cld-* tool to run; anything else is passed to claude
+
+FLAGS
+
+    cld has none of its own -- "cld --help" is claude's help, as every flag is
+    claude's. This message is "cld help".
+help
+}
+
+
+## main
+
+CMD="${1:-}"
+
+# only a bare word can name a cmd: a flag is claude's, always
+if [[ -n "${CMD}" ]] && [[ "${CMD}" != -* ]]; then
+    # cld's own help has no tool to dispatch to, and claude has no "help"
+    # command for it to shadow
+    [[ "${CMD}" == "help" ]] && { help ; exit 0 ; }
+
+    if check::installed "cld-${CMD}"; then
+        shift
+        exec "cld-${CMD}" "$@"
+    fi
+fi
+
+if ! check::installed claude; then
+    ULOGGER_PREFIX="cld" ulogger error "claude isn't installed"
+    exit 1
+fi
+
+exec claude "$@"

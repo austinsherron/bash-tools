@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+trap 'ulogger error "error on line $LINENO (exit $?)"' ERR
+
+source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/validate.sh"
+source "${BASH_LIB}/log/utils.sh"
+
+source "${BASH_TOOLS}/tools/claude/_helpers/index.sh"
+source "${BASH_TOOLS}/tools/claude/index/cmd/_helpers.sh"
+
+
+[[ -z "${ULOGGER_TYPE+x}" ]] && export ULOGGER_TYPE="claude"
+[[ -z "${ULOGGER_PREFIX+x}" ]] && export ULOGGER_PREFIX="index"
+
+declare -A CMDS=(
+    [update]="   record one session's title and branch (hook mode)"
+    [read]="     display a directory's sessions, reconciling the index first"
+    [reconcile]="bring a directory's index in line w/ its transcripts"
+    [merge]="    carry project directories' records into another's index"
+    [drop]="     remove a directory's index"
+)
+
+function _load_cmds() {
+    for cmd_file in "${BASH_TOOLS}"/tools/claude/index/cmd/*.sh; do
+        # shellcheck source=/dev/null
+        source "${cmd_file}"
+    done
+}
+
+function cmd_descriptions() {
+    # shellcheck disable=SC2207
+    IFS=$'\n' sorted_cmds=($(sort <<< "${!CMDS[*]}")) ; unset IFS
+
+    for cmd in "${sorted_cmds[@]}"; do
+        echo "    ${cmd}       ${CMDS[${cmd}]}"
+    done
+}
+
+USAGE="cld-index <cmd> [-p <path>] [-s <session>] [-d <dest> <dir>...] {flags}"
+
+usage() {
+    echo "usage: ${USAGE}"
+}
+
+help() {
+cat <<help
+NAME
+
+    cld-index - Maintain the cached index of Claude Code sessions.
+
+SYNOPSIS
+
+    ${USAGE}
+    cld-index -h|--help
+
+DESCRIPTION
+
+    Keeps a cache of the session metadata cld-ls displays -- title, branch, id --
+    so that listing sessions doesn't cost a scan of every transcript. Each
+    directory's sessions are cached in one store (see: store) at:
+
+        \${STORE_ROOT:-\${XDG_STATE_HOME:-\$HOME/.local/state}/claude}/${__INDEX_DIR}/<encoded path>
+
+    The cache is written by hooks -- see "update" -- and read by cld-ls, which
+    calls "read".
+
+    Nothing here is authoritative: every record is derived from a transcript and
+    its title sidecar, so a missing or stale index is repaired by "reconcile"
+    rather than lost. That's what makes the hooks an optimization instead of a
+    correctness requirement -- sessions that ran before the hooks were installed,
+    or that ended w/out firing one, are picked up anyway.
+
+CMDS
+
+$(cmd_descriptions)
+
+    update      Records one session, reading the title from its sidecar and the
+                branch from the session's cwd. Meant to run as a hook:
+
+                    SessionStart    the session (or a resume of it) has begun
+                    Stop            the session finished a turn
+                    SessionEnd      the session is over
+
+                Claude Code has no hook for a rename, so a title set w/ /rename
+                lands in the index at the next turn's Stop -- or, failing that,
+                when "read" next notices the sidecar has been rewritten.
+
+                In hook mode -- i.e.: whenever stdin is a pipe -- the session and
+                its cwd are read from the event's JSON, and -p|-s override them.
+
+    read        Displays "<date>\\t<session>\\t<branch>\\t<title>" for each of a
+                directory's titled sessions, in no particular order (cld-ls
+                sorts). Reconciles first, so the output is correct even when no
+                hook has ever run for the directory.
+
+    reconcile   Scans the transcripts of sessions the index doesn't know, drops
+                records whose transcript is gone, and refreshes titles whose
+                sidecar has been rewritten. Reports what changed.
+
+    merge       Carries the records of one or more project directories into
+                <dest>'s index, then removes the indexes it merged. For
+                transcripts that have moved (see: cld-archive): every field of a
+                record survives the move, so the sessions don't have to be
+                scanned again to be listed.
+
+                Takes the project directories themselves, not the paths they were
+                recorded for -- the caller names the ones it actually moved, and
+                the encoding can't be reversed to recover their paths anyway.
+                They need not still exist; only their names are used.
+
+    drop        Removes the index for a directory and for any directory beneath
+                it. For a path whose transcripts are gone rather than moved; the
+                next reconcile rebuilds whatever is left.
+
+OPTIONS
+
+    -p, --path      the directory to operate on (default: cwd, or the hook
+                    event's cwd)
+    -d, --dest      (merge only) the directory whose index to merge into
+    -s, --session   (update only) the session id to record, overriding the hook
+                    event's
+
+POSITIONAL ARGUMENTS
+
+    DIRS            (merge only) the project directories whose indexes to merge
+
+FLAGS
+
+    -h, --help      display this message
+help
+}
+
+
+LogFlags::process_log_flags "$@"
+
+FIRST="${1:-}"
+
+if [[ -z "${FIRST}" ]] || [[ "${FIRST}" == "-h" ]] || [[ "${FIRST}" == "--help" ]]; then
+    help && exit 0
+fi
+
+if ! check::one_of "${FIRST}" "${!CMDS[@]}"; then
+    ulogger error "unrecognized command: ${FIRST}"
+    usage >&2
+    exit 1
+fi
+
+CMD="${FIRST}" ; shift
+
+PATH_ARG=""
+DEST=""
+SESSION=""
+ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -p|--path)
+      PATH_ARG="${2:-}" ; shift ; shift ;;
+    -d|--dest)
+      DEST="${2:-}" ; shift ; shift ;;
+    -s|--session)
+      SESSION="${2:-}" ; shift ; shift ;;
+    -v*|-q*)
+      shift ;;
+    -h|--help)
+      help && exit 0 ;;
+    *)
+      ARGS+=("${1}") ; shift ;;
+  esac
+done
+
+# merge is addressed by its destination and takes the project directories to
+# merge, so it's the only command w/ -d|--dest and the only one w/ positionals
+if [[ "${CMD}" == "merge" ]]; then
+    validate_required "-d|--dest" "${DEST}" || exit 1
+
+    if [[ "${#ARGS[@]}" -eq 0 ]]; then
+        ulogger error "merge needs at least one project directory"
+        usage >&2
+        exit 1
+    fi
+elif [[ "${#ARGS[@]}" -gt 0 ]]; then
+    ulogger error "${CMD} takes no positional arguments: ${ARGS[*]}"
+    usage >&2
+    exit 1
+fi
+
+
+DEST="${DEST%/}"
+
+# the directory the command operates on, i.e.: what every command but merge is
+# addressed by (see: _setup::resolve_target)
+TARGET=""
+
+# Resolves into TARGET the directory the command operates on.
+#
+# In hook mode -- i.e.: whenever stdin is a pipe -- the event carries the session
+# and the cwd to use, and -p|-s override them. Only update runs as a hook:
+# reading stdin for the others would block, as cld-ls calls them from a pipeline
+# whose stdin isn't a terminal.
+function _setup::resolve_target() {
+    [[ "${CMD}" == "update" && ! -t 0 ]] && __read_hook_event
+
+    TARGET="$(realpath "${PATH_ARG:-$(pwd)}" 2> /dev/null || echo "${PATH_ARG}")"
+
+    validate_required "-p|--path" "${TARGET}" || return 1
+
+    # drop takes a path whose transcripts have moved, which is typically a
+    # worktree that's already gone; the rest need to read it
+    [[ "${CMD}" == "drop" ]] && return 0
+
+    validate_dir "${TARGET}" "-p|--path"
+}
+
+
+## main
+
+_load_cmds
+
+# merge is named by its destination rather than by a path, so it's dispatched
+# ahead of the resolution the rest are addressed by
+if [[ "${CMD}" == "merge" ]]; then
+    cmd::merge "${DEST}" "${ARGS[@]}"
+    exit $?
+fi
+
+_setup::resolve_target || exit 1
+
+"cmd::${CMD}" "${TARGET}"
