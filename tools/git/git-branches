@@ -25,20 +25,21 @@ NAME
 
 SYNOPSIS
 
-    git branches [-a|--all] [-d|--default] [-f|--fzf] [--remotes]
-                 [-n|--no-indicator] [-r|--raw] [-v|--verbose] [--hidden]
+    git branches [-a|--all] [-c|--category <category>] [-d|--default] [-f|--fzf]
+                 [--remotes] [-n|--no-indicator] [-r|--raw] [-v|--verbose] [--hidden]
     git branches -h|--help
 
 DESCRIPTION
 
     Lists branches similarly to "git branch", but uses distinct indicators
-    to show which worktree each branch is checked out in.
+    to show each branch's category: the directory, beneath the worktree root,
+    containing the worktree the branch is checked out in.
 
-    Indicators are configured per repo via ~/.config/git/branch-indicators.toml.
-    When no configuration is found for a repo (or a worktree within a repo),
-    indicators are randomly assigned from a default set.
+    Indicators are configured per repo via ~/.config/git/config.toml. When no
+    configuration is found for a repo (or a category within a repo), indicators
+    are randomly assigned from a default set.
 
-    Branches checked out in a worktree listed under [<repo>].hide in
+    Branches whose category is listed under [<repo>].hide in
     ~/.config/git/config.toml are omitted unless --hidden is given.
 
     Output uses a fixed 2-character prefix ("X " or "  ") that can be stripped
@@ -49,19 +50,21 @@ DESCRIPTION
 FLAGS
 
     -a, --all           list both local and remote-tracking branches
-    -d, --default       display configured worktree default branches
+    -c, --category      list only branches belonging to this category
+    -d, --default       display configured category default branches
     -f, --fzf           pipe output to fzf and remove branch indicators from
                         selection
         --remotes       list only remote-tracking branches
     -n, --no-indicator  omit the leading indicator prefix (useful for scripting)
     -r, --raw           display raw text output
     -v, --verbose       append per-branch status after each branch:
-                        "branch [worktree] X Y", where [worktree] is the branch's
-                        checked-out worktree (omitted if none), X is ✓ when the
-                        branch is up to date with local master, ⨯ if behind, and
-                        Y is ○ when the worktree is clean, ● if it has uncommitted
-                        changes (shown only for branches checked out in a worktree)
-        --hidden        include branches checked out in worktrees listed under
+                        "branch [category/item] X Y", where [category/item]
+                        identifies the branch's checked-out worktree (omitted if
+                        none), X is ✓ when the branch is up to date with local
+                        master, ⨯ if behind, and Y is ○ when the worktree is
+                        clean, ● if it has uncommitted changes (shown only for
+                        branches checked out in a worktree)
+        --hidden        include branches whose category is listed under
                         [<repo>].hide (hidden by default)
     -h, --help          display this message
 help
@@ -71,8 +74,13 @@ help
 FALLBACK_INDICATORS=('–' '+' '*' '•' '‣' '▪' '∙' '→')
 
 BRANCH=""
-WORKTREE=""
+CATEGORY=""
+REL=""
+WORKTREE_PATH=""
 
+CURRENT_WORKTREE="$(git::worktree)"
+
+CATEGORY_FILTER=""
 REFS=("refs/heads/")
 RAW=""
 SHOW_DEFAULTS=""
@@ -93,6 +101,8 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     -a|--all)
       SHOW_DEFAULTS="true" SHOW_HIDDEN="true" ; shift ;;
+    -c|--category)
+      CATEGORY_FILTER="${2}" ; shift ; shift ;;
     -d|--default)
       SHOW_DEFAULTS="true"; shift ;;
     -f|--fzf)
@@ -119,6 +129,7 @@ done
 
 function _pick_random_indicator() {
     local available=()
+    local ind
 
     for ind in "${FALLBACK_INDICATORS[@]}"; do
         if ! config::is_indicator_used "${ind}"; then
@@ -137,23 +148,30 @@ function _pick_random_indicator() {
 
 
 function _setup::assign_indicators() {
-    local worktrees=()
-    worktrees::all worktrees
+    local categories=()
+    local category
 
-    for worktree_name in "${worktrees[@]}"; do
-        if ! config::has_indicator "${worktree_name}"; then
-            config::set_indicator "${worktree_name}" "$(_pick_random_indicator)"
+    worktrees::categories categories
+
+    for category in "${categories[@]}"; do
+        if ! config::has_indicator "${category}"; then
+            config::set_indicator "${category}" "$(_pick_random_indicator)"
         fi
     done
 }
 
 function _is_hidden() {
-    [[ -z "${SHOW_HIDDEN}" && -n "${WORKTREE}" ]] || return 1
-    config::is_hidden_worktree "${WORKTREE}"
+    [[ -z "${SHOW_HIDDEN}" && -n "${CATEGORY}" ]] || return 1
+    config::is_hidden_category "${CATEGORY}"
+}
+
+function _is_filtered_out() {
+    [[ -n "${CATEGORY_FILTER}" ]] || return 1
+    [[ "${CATEGORY}" != "${CATEGORY_FILTER}" ]]
 }
 
 function _is_current_worktree() {
-    [[ "${WORKTREE}" = "$(git::worktree_name)" ]]
+    [[ -n "${WORKTREE_PATH}" && "${WORKTREE_PATH}" = "${CURRENT_WORKTREE}" ]]
 }
 
 function _should_display_branch() {
@@ -161,8 +179,8 @@ function _should_display_branch() {
     if [[ -z "${BRANCH}" ]] || [[ "${BRANCH}" = */HEAD ]]; then
         return 1
     fi
-    # don't display branch if it's configured as hidden
-    if _is_hidden; then
+    # don't display branch if it's configured as hidden, or filtered out by category
+    if _is_hidden || _is_filtered_out; then
         return 1
     fi
     # display branch if it's not a default...
@@ -197,8 +215,8 @@ function _get_indicator() {
 
     if [[ -n "${NO_INDICATOR}" ]] || [[ -n "${RAW}" ]]; then
         indicator=""
-    elif [[ -n "${WORKTREE}" ]] && config::has_indicator "${WORKTREE}"; then
-        indicator="$(config::indicator_for "${WORKTREE}") "
+    elif [[ -n "${CATEGORY}" ]] && config::has_indicator "${CATEGORY}"; then
+        indicator="$(config::indicator_for "${CATEGORY}") "
     else
         indicator="  "
     fi
@@ -207,8 +225,8 @@ function _get_indicator() {
 }
 
 function _worktree_suffix() {
-    [[ -n "${VERBOSE}" && -n "${WORKTREE}" ]] || return 0
-    echo " [${WORKTREE}]"
+    [[ -n "${VERBOSE}" && -n "${REL}" ]] || return 0
+    echo " [${REL}]"
 }
 
 function _sync_indicator() {
@@ -226,12 +244,9 @@ function _clean_indicator() {
 
     # clean/dirty is a property of a working tree, so only branches checked out
     # in a worktree have one; others (i.e.: remotes) get no indicator
-    local path
-    path="$(worktrees::path_for "${BRANCH}")"
+    [[ -n "${WORKTREE_PATH}" ]] || return 0
 
-    [[ -n "${path}" ]] || return 0
-
-    if ! git::is_clean -u "${path}"; then
+    if ! git::is_clean -u "${WORKTREE_PATH}"; then
         echo " ●"
     fi
 }
@@ -245,7 +260,7 @@ function _handle_local_branch() {
 
     local output="${BRANCH}"
 
-    output="$(view::style_branch "${BRANCH}" "${WORKTREE}")"
+    output="$(view::style_branch "${BRANCH}" "${CATEGORY}" "${WORKTREE_PATH}")"
     output="$(_get_indicator)${output}$(_worktree_suffix)$(_sync_indicator)"
 
     if config::is_default_branch "${BRANCH}"; then
@@ -269,7 +284,9 @@ function _build_outputs() {
     for ref_prefix in "${REFS[@]}"; do
         while IFS= read -r branch; do
             BRANCH="${branch}"
-            WORKTREE="$(worktrees::name_for "${BRANCH}")"
+            worktrees::category_for "${BRANCH}" CATEGORY
+            worktrees::rel_for "${BRANCH}" REL
+            worktrees::path_for "${BRANCH}" WORKTREE_PATH
 
             ! _should_display_branch && continue
 

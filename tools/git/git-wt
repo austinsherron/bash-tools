@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+
+# "git wt <cmd>": an entry point to "dev worktree <cmd>" from git, e.g.: "git wt mv".
+#
+# Help is "git wt -h": git itself takes "git wt --help" to mean "git help wt".
+exec "${BASH_TOOLS}/tools/work/maybern/dev" worktree "$@"
