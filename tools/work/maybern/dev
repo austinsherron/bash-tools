@@ -2,94 +2,141 @@
 
 set -Eeuo pipefail
 
-source "${BASH_LIB}/api/git.sh"
-source "${BASH_LIB}/api/tmux.sh"
 source "${BASH_LIB}/args/check.sh"
+source "${BASH_LIB}/args/parse.sh"
 source "${BASH_LIB}/args/validate.sh"
-source "${BASH_LIB}/log/utils.sh"
-source "${BASH_LIB}/utils/env.sh"
+source "${BASH_LIB}/core/str.sh"
 
-declare -A CMDS=(
-    [start]="start"
-    [stop]="stop"
-    [show]="show"
-    [hide]="hide"
-    [restart]="restart"
-    [destroy]="destroy"
-    [list]="list"
-    [new]="new"
+DEV_ROOT="${BASH_TOOLS}/tools/work/maybern"
+
+source "${DEV_ROOT}/_helpers/window.sh"
+source "${DEV_ROOT}/cmd/local.sh"
+source "${DEV_ROOT}/cmd/worktree/main.sh"
+
+
+# Dispatches "dev <group> <cmd>" to the command implementations in cmd/.
+#
+# Dispatch is strictly two-level, w/ no implicit fallback to a group: "list"
+# exists in both groups, so a bare "dev list" would be ambiguous. Each group
+# owns its own command, description, usage and alias tables, and a help message
+# per command, all of them named for the group's function prefix:
+#
+#     <PREFIX>_CMDS          the group's commands (the set dispatch validates against)
+#     <PREFIX>_DESCRIPTIONS  one line per command, for the help messages
+#     <PREFIX>_GROUP_USAGE   the group's usage string
+#     <PREFIX>_USAGE         one usage string per command
+#     <PREFIX>_ALIASES       alias -> command
+#     <prefix>::help         the group's help message
+#     <prefix>::help::<cmd>  a command's help message
+#     <prefix>::<cmd>        a command's implementation
+
+declare -A CMD_GROUPS=(
+    [local]="local"
+    [worktree]="wt"
 )
 
-declare -A CMD_DESCRIPTIONS=(
-    [start]="  starts services in an existing dev session, or creates one if it doesn't exist"
-    [stop]="   stops services in the dev session"
-    [show]="   opens the dev session for the current worktree in a tmux popup"
-    [hide]="   closes the dev session tmux popup"
-    [restart]="executes [stop] and [start]"
-    [destroy]="executes [stop] and tears down the dev session"
-    [ls]="     lists dev windows"
-    [new]="    opens a new worktree dev window in the current session"
+declare -A GROUP_DESCRIPTIONS=(
+    [local]="manages the local env session for the current worktree"
+    [worktree]="manages worktrees and their local env windows"
 )
 
-declare -A CMD_ALIASES=(
-    [s]=start
-    [init]=start
-    [i]=start
-    [up]=start
-    [u]=start
-    [down]=stop
-    [d]=stop
-    [view]=show
-    [v]=show
-    [h]=hide
-    [close]=hide
-    [c]=hide
-    [x]=hide
-    [r]=restart
-    [kill]=destroy
-    [k]=destroy
-    [teardown]=destroy
-    [t]=destroy
-    [X]=destroy
-    [ls]=list
-    [l]=list
-    [n]=new
+declare -A GROUP_ALIASES=(
+    [l]=local
+    [loc]=local
+    [wt]=worktree
+    [w]=worktree
 )
 
-function cmds() {
-    str::join "|" "${!CMDS[@]}"
+## usage #######################################################################
+
+function groups() {
+    str::join "|" "${!CMD_GROUPS[@]}"
 }
 
-function cmd_descriptions() {
-    for cmd in "${!CMD_DESCRIPTIONS[@]}"; do
-        echo "    ${cmd}           ${CMD_DESCRIPTIONS[${cmd}]}"
+function group_descriptions() {
+    local group
+    for group in $(printf '%s\n' "${!GROUP_DESCRIPTIONS[@]}" | sort); do
+        printf '    %-12s%s\n' "${group}" "${GROUP_DESCRIPTIONS[${group}]}"
     done
 }
 
-USAGE="dev cmd"
+#######################################
+# Displays a group's commands, one per line, w/ their descriptions.
+# Arguments:
+#   descriptions: the name of a group's descriptions array
+#######################################
+function cmd_descriptions() {
+    local -n __descriptions="${1}"
+    local cmd
 
-usage() {
-    echo "usage: ${USAGE}"
+    for cmd in $(printf '%s\n' "${!__descriptions[@]}" | sort); do
+        printf '    %-12s%s\n' "${cmd}" "${__descriptions[${cmd}]}"
+    done
 }
 
-help() {
+#######################################
+# Displays a command's aliases, comma separated.
+# Arguments:
+#   aliases: the name of an alias -> command array
+#   cmd: the command whose aliases to display
+#######################################
+function aliases_for() {
+    local -n __aliases="${1}"
+    local cmd="${2}"
+
+    local alias
+    local found=()
+
+    for alias in "${!__aliases[@]}"; do
+        [[ "${__aliases[${alias}]}" == "${cmd}" ]] && found+=("${alias}")
+    done
+
+    if [[ "${#found[@]}" -eq 0 ]]; then
+        echo "none"
+        return 0
+    fi
+
+    # shellcheck disable=SC2046
+    str::join ", " $(printf '%s\n' "${found[@]}" | sort)
+}
+
+USAGE="dev $(groups) <cmd> [args] {flags}"
+
+function usage() {
+    echo "${USAGE}"
+}
+
+function help() {
 cat <<help
 DESCRIPTION
 
 A utility for interacting w/ Maybern local development environments orchestrated via tmux.
 
-Each worktree gets its own window on a separate "dev" tmux server, where it can be viewed via popup overlay using "show".
+Worktrees are grouped into categories: each category is a directory beneath the worktree root,
+and each worktree w/in it is a work item. Each worktree gets its own window on a separate "dev"
+tmux server, where it can be viewed via popup overlay using "local show".
 
 USAGE
 
     ${USAGE}
 
-COMMANDS
+GROUPS
 
-$(cmd_descriptions)
+$(group_descriptions)
+
+LOCAL COMMANDS
+
+$(cmd_descriptions LOCAL_DESCRIPTIONS)
+
+WORKTREE COMMANDS
+
+$(cmd_descriptions WT_DESCRIPTIONS)
+
+Every group and command has a help message of its own: "dev <group> -h", "dev <group> <cmd> -h".
 
 POSITIONAL ARGUMENTS
 
+    GROUP           the group of the command to run
     CMD             the command to run
 
 FLAGS
@@ -98,147 +145,91 @@ FLAGS
 help
 }
 
-DEV_SERVER="dev"
-WORKTREE="$(git::worktree)"
-WINDOW_NAME="$(basename "${WORKTREE}")"
-BASE_PANE_IDX="$(tmux::base_pane_idx)"
+# Displays the most specific help message the args resolved to: a command's, its
+# group's, or this tool's.
+function help_for() {
+    [[ -n "${GROUP}" ]] || { help ; return 0 ; }
 
+    local prefix="${CMD_GROUPS[${GROUP}]}"
+
+    [[ -n "${CMD}" ]] || { "${prefix}::help" ; return 0 ; }
+    "${prefix}::help::${CMD}"
+}
+
+## args ########################################################################
+
+GROUP=""
 CMD=""
+ARGS=()
+
+function process_group() {
+    local group="${1}"
+
+    check::one_of "${group}" "${!GROUP_ALIASES[@]}" && group="${GROUP_ALIASES[${group}]}"
+    validate_one_of "GROUP" "${group}" "${!CMD_GROUPS[@]}" || exit 1
+
+    GROUP="${group}"
+}
 
 function process_cmd() {
-    if [[ -n "${CMD}" ]]; then
-        ulogger error "CMD already set to ${CMD}"
-        exit 1
-    fi
-
     local cmd="${1}"
+    local prefix="${CMD_GROUPS[${GROUP}]}"
 
-    check::one_of "${cmd}" "${!CMD_ALIASES[@]}" && cmd="${CMD_ALIASES[${cmd}]}"
-    validate_one_of "CMD" "${cmd}" "${!CMDS[@]}" || exit 1
+    local -n cmds="${prefix^^}_CMDS"
+    local -n aliases="${prefix^^}_ALIASES"
+
+    check::one_of "${cmd}" "${!aliases[@]}" && cmd="${aliases[${cmd}]}"
+    validate_one_of "CMD" "${cmd}" "${!cmds[@]}" || exit 1
 
     CMD="${cmd}"
 }
 
+[[ $# -gt 0 ]] || { help && exit 0 ; }
+
 while [[ $# -gt 0 ]]; do
+  # a help flag always displays help, for whatever the args have resolved so far
+  if parse::is_help_flag "${1}"; then
+      help_for && exit 0
+  fi
+
+  # once the group and command are resolved, everything else belongs to the command
+  if [[ -n "${GROUP}" && -n "${CMD}" ]]; then
+      ARGS+=("${1}") ; shift ; continue
+  fi
+
   case $1 in
     -v*|-q*)
       shift ;;
-    -h|--help)
-      help && exit 0 ;;
+    -*)
+      echo "usage: $(usage)" >&2 && exit 1 ;;
     *)
-      process_cmd "${1}" ; shift ;;
+      if [[ -z "${GROUP}" ]]; then process_group "${1}" ; else process_cmd "${1}" ; fi
+      shift ;;
   esac
 done
 
+validate_required_positional "GROUP" "${GROUP}" || exit 1
 
-validate_required_positional "CMD" "${CMD}" || exit 1
+PREFIX="${CMD_GROUPS[${GROUP}]}"
 
-function _dtmux() {
-    tmux -L "${DEV_SERVER}" "$@"
-}
+declare -n GROUP_USAGE="${PREFIX^^}_GROUP_USAGE"
+declare -n USAGES="${PREFIX^^}_USAGE"
 
-function _has_window() {
-    _dtmux list-windows -F '#W' 2> /dev/null | grep -qF "${WINDOW_NAME}"
-}
+if [[ -z "${CMD}" ]]; then
+    USAGE="${GROUP_USAGE}"
 
-function _target() {
-    local pane="${1:-0}"
+    validate_required_positional "CMD" "${CMD}" || true
+    echo "usage: $(usage)" >&2
+    echo "run \"dev ${GROUP} -h\" for the group's commands" >&2
 
-    echo "${WINDOW_NAME}.$((BASE_PANE_IDX+pane))"
-}
+    exit 1
+fi
 
-function _init() {
-    local cmd="_dtmux"
-    local pane_dirs=()
+## main ########################################################################
 
-    local OPTIND=1
-    while getopts "c:d:" opt; do
-      case $opt in
-        c) cmd="${OPTARG}" ;;
-        d) pane_dirs+=("${OPTARG}") ;;
-        \?) ulogger error "valid flags are -cd" >&2 ; return 1 ;;
-      esac
-    done
-    shift $((OPTIND - 1))
+# the command's own usage, so that its arg validation failures point at it
+USAGE="${USAGES[${CMD}]}"
 
-    if $cmd list-sessions 2> /dev/null | grep -q .; then
-        $cmd new-window -n "${WINDOW_NAME}" -c "${WORKTREE}/${pane_dirs[0]:-backend}"
-    else
-        $cmd new-session -d -n "${WINDOW_NAME}" -c "${WORKTREE}/${pane_dirs[0]:-backend}"
-    fi
+window::init
 
-    $cmd split-window -h -t "${WINDOW_NAME}" -c "${WORKTREE}/${pane_dirs[1]:-frontend}"
-    $cmd split-window -v -t "${WINDOW_NAME}" -c "${WORKTREE}/${pane_dirs[2]:-backend}"
-}
-
-function _start() {
-    _dtmux send-keys -t "$(_target)" 'just run-server' C-m
-    _dtmux send-keys -t "$(_target 1)" 'pnpm start:subdomains' C-m
-    _dtmux send-keys -t "$(_target 2)" 'just run-celery' C-m
-}
-
-function _stop() {
-    local window="${1:-${WINDOW_NAME}}"
-
-    for i in 0 1 2; do
-        _dtmux send-keys -t "${window}.$((BASE_PANE_IDX+i))" C-c 'clear' C-m
-    done
-}
-
-function _stop_others() {
-    local window
-
-    while IFS= read -r window; do
-        [[ "${window}" == "${WINDOW_NAME}" ]] && continue
-        _stop "${window}"
-    done < <(_dtmux list-windows -F '#W' 2> /dev/null)
-}
-
-function dev::start() {
-    _has_window || _init
-
-    _stop_others
-    _start
-}
-
-function dev::stop() {
-    _stop
-}
-
-function dev::show() {
-    tmux display-popup -E -w 99% -h 99% \
-        "TMUX= TERM=screen-256color tmux -L ${DEV_SERVER} select-window -t '${WINDOW_NAME}' \\; attach"
-}
-
-function dev::hide() {
-    _dtmux detach-client
-}
-
-function dev::restart() {
-    _stop
-    _start
-}
-
-function dev::destroy() {
-    _stop
-    _dtmux kill-window -t "${WINDOW_NAME}"
-}
-
-function dev::list() {
-    _dtmux list-windows -F '#W' 2> /dev/null || return 0
-}
-
-function dev::new() {
-    local worktree_name
-    worktree_name="$(git::list_worktrees -n | fzf --ansi --tac)"
-
-    WORKTREE="$(git::worktree_root)/${worktree_name}"
-    WINDOW_NAME="$(basename "${WORKTREE}")"
-
-    _init -c "tmux" -d "backend" -d "backend" -d "/"
-}
-
-## main
-
-"dev::${CMD}"
-
+"${PREFIX}::${CMD}" ${ARGS[@]+"${ARGS[@]}"}

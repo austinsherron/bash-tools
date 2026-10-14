@@ -25,6 +25,7 @@ __GIT_MAIN_WORKTREE=""                  # main worktree path, per the listing
 __GIT_WORKTREE_PATHS=()                 # worktree paths, main worktree first
 declare -A __GIT_WORKTREE_BRANCH        # worktree path -> branch (short)
 declare -A __GIT_WORKTREE_REL           # worktree path -> "<category>/<item>"
+declare -A __GIT_WORKTREE_LOCKED        # worktree path -> lock reason, if locked
 
 __GIT_WORKTREES_LOADED=""
 
@@ -146,6 +147,132 @@ function git::can_fast_forward() {
     git::is_ancestor "${branch}" "${source}"
 }
 
+#######################################
+# Displays the branch checked out in the current (or provided) worktree. A
+# detached worktree resolves to the empty string.
+#
+# Unlike git::worktree_branch this asks git directly rather than reading the
+# memoized listing, so it reflects a checkout made since the listing was loaded.
+# Arguments:
+#   dir: optional, defaults to the current worktree; the worktree to inspect
+# Outputs:
+#   Writes the checked-out branch to stdout
+#######################################
+function git::current_branch() {
+    local dir="${1:-}"
+    local args=(branch --show-current)
+
+    [[ -n "${dir}" ]] && args=(-C "${dir}" "${args[@]}")
+    git "${args[@]}"
+}
+
+#######################################
+# Copies the local branches that contain a ref (i.e.: that the ref is an ancestor
+# of, the ref's own branch included) into the caller's array.
+# Arguments:
+#   ref: the ref the branches must contain
+#   out: the name of the array to populate
+#######################################
+function git::branches_containing() {
+    local ref="${1}"
+    local -n __git_containing_out="${2}"
+
+    __git_containing_out=()
+
+    local branch
+    while IFS= read -r branch; do
+        __git_containing_out+=("${branch}")
+    done < <(git for-each-ref --contains "${ref}" --format='%(refname:short)' refs/heads/)
+}
+
+#######################################
+# Copies the local branches that point at a commit in the range "<base>..<tip>"
+# into the caller's array, ordered from nearest <base> to nearest <tip>. These
+# are the branches that "git rebase --update-refs" moves when <tip> is rebased
+# onto <base>. Branches that point at the same commit are ordered by name.
+# Arguments:
+#   base: the exclusive start of the range (e.g. "master")
+#   tip: the inclusive end of the range
+#   out: the name of the array to populate
+#######################################
+function git::branches_in_range() {
+    local base="${1}"
+    local tip="${2}"
+    local -n __git_range_out="${3}"
+
+    __git_range_out=()
+
+    local -A position=()
+    local sha branch
+    local i=0
+
+    while IFS= read -r sha; do
+        position["${sha}"]="${i}"
+        i=$((i + 1))
+    done < <(git rev-list --reverse "${base}..${tip}")
+
+    [[ ${#position[@]} -eq 0 ]] && return 0
+
+    while IFS= read -r branch; do
+        __git_range_out+=("${branch}")
+    done < <(
+        git for-each-ref --format='%(objectname) %(refname:short)' refs/heads/ |
+            while read -r sha branch; do
+                [[ -n "${position[${sha}]+x}" ]] && echo "${position[${sha}]} ${branch}"
+            done |
+            sort -k1,1n -k2,2 |
+            cut -d' ' -f2-
+    )
+}
+
+#######################################
+# Creates a branch, w/out checking it out anywhere.
+# Arguments:
+#   branch: the branch to create
+#   start: optional, defaults to HEAD; the start point to create it from
+# Returns:
+#   0 if the branch was created, 1 otherwise
+#######################################
+function git::create_branch() {
+    local branch="${1}"
+    local start="${2:-HEAD}"
+
+    git branch "${branch}" "${start}"
+}
+
+#######################################
+# Deletes a branch.
+#
+# A branch that isn't fully merged is kept, and reported by git, unless -f is
+# given: the default can't drop commits that live nowhere else.
+#
+# The branch can't be checked out anywhere -- git refuses to delete one a
+# worktree is holding -- so a branch deleted alongside its worktree goes after
+# it (see: git::remove_worktree).
+# Arguments:
+#   branch: the branch to delete
+#   -f: delete the branch even if it isn't fully merged
+# Returns:
+#   0 if the branch was deleted, 1 otherwise
+#######################################
+function git::delete_branch() {
+    local branch="${1}" ; shift
+
+    # -d refuses an unmerged branch; -D deletes it regardless
+    local flag="-d"
+
+    local OPTIND=1
+    while getopts "f" opt; do
+      case $opt in
+        f) flag="-D" ;;
+        \?) ulogger error "valid flags are -f" >&2 ; return 1 ;;
+      esac
+    done
+    shift $((OPTIND - 1))
+
+    git branch "${flag}" "${branch}"
+}
+
 ## status ######################################################################
 
 #######################################
@@ -202,10 +329,17 @@ function __git::rel_for() {
         __GIT_REL="${path##*/}"
     elif [[ "${path}" = "${root}/"* ]]; then
         __GIT_REL="${path#"${root}"/}"
-    else
+    elif [[ "${path}" = "${root%/*}/"* ]]; then
         # a worktree predating the worktrees dir: still a direct child of the
         # repo's parent, and still its own category
         __GIT_REL="${path#"${root%/*}"/}"
+    else
+        # a worktree outside the repo's tree entirely (e.g.: a throwaway one
+        # under /tmp). Stripping a prefix it doesn't have would leave the rel
+        # absolute, whose leading "/" makes "${rel%%/*}" -- the category -- empty,
+        # so it's named by its basename and, like the main worktree, is its own
+        # category
+        __GIT_REL="${path##*/}"
     fi
 }
 
@@ -230,6 +364,11 @@ function __git::load_worktrees() {
                 ;;
             branch\ *)
                 [[ -n "${path}" ]] && __GIT_WORKTREE_BRANCH["${path}"]="${line#branch refs/heads/}"
+                ;;
+            locked|locked\ *)
+                # a bare "locked" is a lock w/out a reason, so the key's presence
+                # is the lock -- not the value, which is then empty
+                [[ -n "${path}" ]] && __GIT_WORKTREE_LOCKED["${path}"]="${line#locked }"
                 ;;
         esac
     done < <(git worktree list --porcelain)
@@ -261,9 +400,10 @@ function __git::invalidate_worktrees() {
     __GIT_MAIN_WORKTREE=""
     __GIT_WORKTREE_PATHS=()
 
-    unset __GIT_WORKTREE_BRANCH __GIT_WORKTREE_REL
+    unset __GIT_WORKTREE_BRANCH __GIT_WORKTREE_REL __GIT_WORKTREE_LOCKED
     declare -gA __GIT_WORKTREE_BRANCH
     declare -gA __GIT_WORKTREE_REL
+    declare -gA __GIT_WORKTREE_LOCKED
 }
 
 ## worktrees: layout ###########################################################
@@ -528,6 +668,17 @@ function git::uses_worktrees() {
 ## worktrees: mutations ########################################################
 
 #######################################
+# Discards the memoized worktree listing, so that the next lookup reloads it.
+#
+# The mutations below do this themselves; this is for a caller that adds or
+# removes a worktree by other means (e.g.: a repo's own tooling), and that goes
+# on to read the listing afterwards.
+#######################################
+function git::reload_worktrees() {
+    __git::invalidate_worktrees
+}
+
+#######################################
 # Creates a worktree, creating its parent (category) directory if necessary.
 # Arguments:
 #   path: the path at which to create the worktree
@@ -566,27 +717,157 @@ function git::create_worktree() {
 }
 
 #######################################
+# Checks if a worktree is locked, i.e.: marked by "git worktree lock" as one that
+# neither a removal nor a prune may touch.
+# Arguments:
+#   path: the worktree to check
+# Returns:
+#   0 if the worktree is locked, 1 otherwise
+#######################################
+function __git::worktree_locked() {
+    __git::load_worktrees
+    [[ -n "${__GIT_WORKTREE_LOCKED[${1%/}]+x}" ]]
+}
+
+#######################################
+# Checks that a worktree can be taken out from under git, i.e.: that renaming it
+# away and pruning after it is safe.
+#
+# This is the async removal's share of the work that "git worktree remove" does
+# for the sync one: it never runs there, so its refusals are made here instead.
+# Arguments:
+#   path: the path of the worktree to remove
+#   force: non-empty to allow a worktree w/ uncommitted changes
+# Returns:
+#   0 if the worktree can be removed, 1 otherwise
+#######################################
+function __git::worktree_removable() {
+    local path="${1%/}"
+    local force="${2}"
+
+    __git::load_worktrees
+
+    if [[ -z "${__GIT_WORKTREE_REL[${path}]+x}" ]]; then
+        ulogger error "'${path}' isn't a worktree of this repo" >&2
+        return 1
+    fi
+
+    if [[ "${path}" = "${__GIT_MAIN_WORKTREE}" ]]; then
+        ulogger error "refusing to remove '${path}': it's the repo's main worktree" >&2
+        return 1
+    fi
+
+    if __git::worktree_locked "${path}"; then
+        ulogger error "worktree '${path}' is locked; unlock it to remove it" >&2
+        return 1
+    fi
+
+    # git refuses these however it's asked, force and all: an initialized
+    # submodule's git dir lives in the worktree that's on its way out
+    if [[ -n "$(git -C "${path}" submodule status 2> /dev/null | grep -v '^-' || true)" ]]; then
+        ulogger error "worktree '${path}' contains initialized submodules; it can't be removed" >&2
+        return 1
+    fi
+
+    if [[ -z "${force}" ]] && ! git::is_clean "${path}"; then
+        ulogger error "worktree '${path}' has uncommitted changes" >&2
+        return 1
+    fi
+}
+
+#######################################
+# Removes a worktree by renaming it aside and deleting it in the background.
+#
+# A rename costs the same whatever the worktree holds, so this returns once git
+# has let the worktree go rather than an unlink later -- which is most of a
+# removal's wall-clock for a worktree carrying installed deps (~20s to unlink the
+# ~190k files of one w/ node_modules and a venv, against a rename that doesn't
+# measure).
+#
+# The doomed copy is renamed to a hidden sibling: the rename stays on one
+# filesystem, which is what makes it constant-time, and nothing lists it (git
+# lists worktrees from its own records, never from a directory scan). Its
+# removal outlives this process, so a failure there goes unreported: what's left
+# behind is a directory that no longer belongs to the repo, not history.
+# Arguments:
+#   path: the path of the worktree to remove
+#   force: non-empty to remove a worktree w/ uncommitted changes
+# Returns:
+#   0 if the worktree was renamed aside and unregistered, 1 otherwise
+#######################################
+function __git::remove_worktree_async() {
+    local path="${1%/}"
+    local force="${2}"
+
+    __git::worktree_removable "${path}" "${force}" || return 1
+
+    local trash="${path%/*}/.${path##*/}.trash.$$"
+
+    # "mv" would move the worktree *into* an existing directory of that name
+    # rather than fail, so the name has to be free before it's used
+    if [[ -e "${trash}" ]]; then
+        ulogger error "can't stage '${path}' for removal: '${trash}' already exists" >&2
+        return 1
+    fi
+
+    mv "${path}" "${trash}" || return 1
+
+    # scheduled before the prune, which can't undo the rename anyway: whatever
+    # git makes of its records, the disk is reclaimed
+    #
+    # "nohup" so the delete outlives the shell that asked for it, and a subshell
+    # so it's out of that shell's job control -- nothing here waits on it
+    ( nohup rm -rf "${trash}" > /dev/null 2>&1 & )
+
+    # the worktree's path is gone, so a prune is what unregisters it -- and it's
+    # what frees the branch it held, which git won't delete while a worktree
+    # still claims to hold it
+    git worktree prune || return 1
+
+    __git::invalidate_worktrees
+}
+
+#######################################
 # Removes a worktree and prunes its administrative files. The worktree's branch
 # is left alone.
+#
+# The removal is synchronous by default: "git worktree remove" unlinks every file
+# in the worktree before this returns. -a instead renames the worktree aside and
+# deletes it in the background, returning as soon as git has let it go (see:
+# __git::remove_worktree_async) -- worth having for a worktree big enough that
+# the unlink is the removal. -a identifies the worktree by git's own listing
+# rather than by resolving the path, so it wants the path as git records it.
 # Arguments:
 #   path: the path of the worktree to remove
 #   -f: remove the worktree even if it has uncommitted changes
+#   -a: return once the worktree is unregistered, deleting its files in the
+#       background
 # Returns:
 #   0 if the worktree was removed, 1 otherwise
 #######################################
 function git::remove_worktree() {
     local path="${1}" ; shift
 
-    local args=(worktree remove)
+    local force=""
+    local async=""
 
     local OPTIND=1
-    while getopts "f" opt; do
+    while getopts "fa" opt; do
       case $opt in
-        f) args+=(--force) ;;
-        \?) ulogger error "valid flags are -f" >&2 ; return 1 ;;
+        f) force="true" ;;
+        a) async="true" ;;
+        \?) ulogger error "valid flags are -fa" >&2 ; return 1 ;;
       esac
     done
     shift $((OPTIND - 1))
+
+    if [[ -n "${async}" ]]; then
+        __git::remove_worktree_async "${path}" "${force}"
+        return $?
+    fi
+
+    local args=(worktree remove)
+    [[ -n "${force}" ]] && args+=(--force)
 
     git "${args[@]}" "${path}" || return 1
     git worktree prune
