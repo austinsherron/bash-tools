@@ -29,6 +29,10 @@ DESCRIPTION
 
         <title> (<session> > <window>)
 
+    A pane stacked out of view is named for the session and window holding its
+    stack's slot rather than the holding session it's parked in, which is where
+    the user would actually go looking for it (see: tmux-stack).
+
     Additionally, if run in a tmux session, default behavior is to suppress notifications if the 
     user is in the same window as the notification's source and the terminal app is focused 
     (requires TERM_APP env var to be set).
@@ -52,6 +56,7 @@ TITLE=""
 MSG=""
 PARSING=""
 FORCE=""
+SOURCE_PANE=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -71,8 +76,33 @@ while [[ $# -gt 0 ]]; do
 done
 
 
+# The pane to name the notification for. A pane stacked out of view sits in a
+# holding session the user never navigates to, so it's named for the pane
+# holding its stack's slot instead (see: tmux-stack). Falls back to the calling
+# pane whenever the stack tooling isn't around to ask.
+function _source_pane() {
+    local -r pane="${TMUX_PANE:-}"
+    local anchor=""
+
+    if command -v tmux-stack > /dev/null 2>&1; then
+        anchor="$(tmux-stack anchor "${pane}" 2> /dev/null || true)"
+    fi
+
+    echo "${anchor:-${pane}}"
+}
+
+# Whether the calling pane is one of its stack's detached members, i.e.: it
+# resolved to a pane other than itself.
+function _is_stacked_out_of_view() {
+    [[ -n "${SOURCE_PANE}" ]] && [[ "${SOURCE_PANE}" != "${TMUX_PANE:-}" ]]
+}
+
 function _is_user_in_source_window() {
-    [[ "$(tmux::location -sw -u)" == "$(tmux::location -sw)" ]]
+    # a detached stacked pane is never the one on screen, even when the user is
+    # sitting in the very window its stack's slot occupies
+    _is_stacked_out_of_view && return 1
+
+    [[ "$(tmux::location -sw -u)" == "$(tmux::location -sw -t "${SOURCE_PANE}")" ]]
 }
 
 function _is_terminal_app_focused() {
@@ -91,7 +121,8 @@ validate_installed "terminal-notifier"
 validate_required "-t|--title" "${TITLE}"
 
 if tmux::is; then
-    TITLE="${TITLE} ($(tmux::location -sw -d " > "))"
+    SOURCE_PANE="$(_source_pane)"
+    TITLE="${TITLE} ($(tmux::location -sw -d " > " -t "${SOURCE_PANE}"))"
 fi
 
 if _should_notify || [[ -n "${FORCE}" ]]; then
