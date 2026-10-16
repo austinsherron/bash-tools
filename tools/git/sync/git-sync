@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+source "${BASH_LIB}/args/validate.sh"
+
+SYNC_ROOT="${BASH_TOOLS}/tools/git/sync"
+
+source "${BASH_TOOLS}/tools/git/sync/_helpers/sync.sh"
+
+
+# Dispatches "git sync [<cmd>] [args]" to the sub-command implementations in
+# cmds/. Each cmds/<cmd>.sh defines sync_<cmd>::main, which takes the sub-command's
+# args, and sync_<cmd>::help. Only the chosen sub-command's file is sourced, so
+# each one owns its own globals.
+
+declare -A CMDS=(
+    [branches]="sync a source branch into other branches"
+    [stack]="rebase a stack of branches, or propagate commits up one"
+)
+
+DEFAULT_CMD="branches"
+
+
+function usage() {
+    echo "usage: git sync [branches] [args]"
+    echo "       git sync stack [args]"
+}
+
+function help() {
+cat <<help
+GIT-SYNC(1)
+
+NAME
+
+    git sync - Sync branches w/out switching branches.
+
+SYNOPSIS
+
+    git sync [<cmd>] [args]
+    git sync -h|--help
+    git sync <cmd> -h|--help
+
+DESCRIPTION
+
+    Syncs branches in the current repo w/ a source branch (default: "master"),
+    w/out switching the branch checked out in any worktree. <cmd> defaults to
+    "branches".
+
+COMMANDS
+
+$(for cmd in $(printf '%s\n' "${!CMDS[@]}" | sort); do
+    printf '    %-12s%s\n' "${cmd}" "${CMDS[${cmd}]}"
+done)
+
+    Every command has a help message of its own: "git sync <cmd> -h".
+
+FLAGS
+
+    -h, --help      display this message
+help
+}
+
+## args ########################################################################
+
+CMD="${DEFAULT_CMD}"
+
+if [[ $# -gt 0 ]]; then
+    case $1 in
+      -h|--help)
+        help && exit 0 ;;
+      -*)
+        ;;
+      *)
+        validate_one_of "CMD" "${1}" "${!CMDS[@]}" || { usage >&2 ; exit 1 ; }
+        CMD="${1}" ; shift ;;
+    esac
+fi
+
+## main ########################################################################
+
+source "${SYNC_ROOT}/cmds/${CMD}.sh"
+
+trap sync::cleanup EXIT
+
+"sync_${CMD}::main" "$@"
